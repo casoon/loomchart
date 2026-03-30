@@ -58,6 +58,10 @@ target/
 # Temporary files
 temp/
 
+# Wrangler
+.wrangler/
+wrangler.log
+
 # Local planning (not for public)
 ROADMAP.md
 
