@@ -74,7 +74,7 @@ loomchart/
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Astro 5, Alpine.js 3, TypeScript 5, Tailwind CSS 4 |
+| Frontend | Astro 6, Alpine.js 3, TypeScript 5, Tailwind CSS 4 |
 | Chart Engine | Rust 1.75+, wasm-bindgen, web-sys |
 | Backend | Elixir, Phoenix Framework, Phoenix Channels |
 | Data Feed | Rust, Tokio, tokio-tungstenite, SQLx |
