@@ -1,0 +1,298 @@
+Unten ist ein ausführlicher Bauplan als Master-Prompt für Claude. Ziel: Phoenix (Elixir) auf Fly.io als Realtime-Hub + API, Supabase Postgres als Datenquelle/Storage, Frontend Astro + Alpine, Rust→WASM für State/Realtime-Client, JS nur für Charts. Modular für später (mehr Quellen, Indikatoren, Backtesting, Live-Trading).
+
+⸻
+
+Master-Prompt für Claude
+
+Du bist Senior Architect für Trading-/Market-Data Systeme. Entwirf ein End-to-End-Konzept + Skeleton-Implementierung (Code-Gerüste, Module, Schnittstellen) für eine Candle-basierte Realtime-Trading-UI.
+
+Ziel
+	•	Realtime Candles im UI (laufende Candle wird aktualisiert; bei Candle-Close wird neue Candle begonnen)
+	•	Datenhaltung in Supabase (Postgres) ist gesetzt
+	•	Backend: Phoenix (Channels/WebSockets) auf Fly.io
+	•	Frontend: Astro + Alpine (UI Shell)
+	•	Rust→WASM steuert UI-State, WS-Client, Normalisierung, Buffering
+	•	JavaScript zeichnet nur Charts (z.B. lightweight chart library), und wird von WASM imperativ angesteuert
+
+Nicht-Ziele (vorerst)
+	•	Live-Trading erst später (API soll aber so geplant sein, dass es leicht nachrüstbar ist)
+	•	Tick/Quote-Trading nicht nötig (nur Candle-basiert)
+	•	Keine komplizierten Microservices am Anfang
+
+⸻
+
+1) Systemübersicht als Bauplan
+
+Erstelle einen klaren Architekturplan mit Komponenten, Verantwortlichkeiten, Datenfluss:
+
+Komponenten
+	1.	Phoenix App (Fly.io)
+	•	REST API: History (Candles), Indikator-Ergebnisse, Metadaten
+	•	WebSocket/Channels: Realtime Candle Stream
+	•	Optional: Worker-Prozesse/GenServers für Aggregation/Import
+	•	Auth-Check (optional): Supabase JWT verifizieren (nur skizzieren)
+	2.	Supabase Postgres
+	•	Tables für candles, indicators, signals, instruments
+	•	Indizes und Constraints für schnelle Range Queries + Upserts auf “laufende Candle”
+	•	Optional: RLS Konzepte (nur skizzieren)
+	3.	Frontend (Astro + Alpine)
+	•	UI Layout, Controls: Symbol/Timeframe, Start/Stop Stream, Toggle Indikatoren
+	•	lädt WASM + initialisiert Chart JS wrapper
+	4.	Rust→WASM (UI Core)
+	•	hält State (selected symbol/timeframe, connection status, last candle)
+	•	WebSocket client zu Phoenix Channels
+	•	holt initiale History via REST
+	•	ruft JS Chart wrapper an: setData/update/addMarkers
+	5.	JS Chart Wrapper
+	•	dünne API: createChart, setCandles, updateCandle, setIndicatorSeries, updateIndicatorPoint, addMarker
+	•	keine Business-Logik, nur Darstellung
+
+⸻
+
+2) Datenmodell und DB Schema (Supabase Postgres)
+
+Definiere Tabellen (SQL DDL) + Best Practices.
+
+Tabelle candles
+	•	Spalten:
+	•	source (text) – z.B. “capitalcom”
+	•	symbol (text)
+	•	timeframe (text) – “1m”, “5m”, …
+	•	ts (timestamptz) – Startzeit des Candle-Buckets
+	•	o, h, l, c (numeric)
+	•	v (numeric)
+	•	is_final (boolean) – Candle abgeschlossen
+	•	updated_at (timestamptz)
+	•	Constraints:
+	•	UNIQUE (source, symbol, timeframe, ts)
+	•	Indizes:
+	•	(source, symbol, timeframe, ts DESC)
+	•	Upsert-Pattern:
+	•	laufende Candle: same ts updaten, is_final=false
+	•	bei Close: set is_final=true
+
+Tabelle indicator_definitions
+	•	Speichert welche Indikatoren existieren, versioniert
+	•	Spalten:
+	•	id (uuid)
+	•	name (text) – “rsi”, “ema”, …
+	•	version (int)
+	•	params_schema (jsonb) – Beschreibung/Defaults
+	•	description (text)
+
+Tabelle indicator_instances
+	•	Konkrete aktivierte Indikatoren pro Chart/User/Watchlist
+	•	Spalten:
+	•	id (uuid)
+	•	symbol, timeframe, source
+	•	definition_id (uuid)
+	•	params (jsonb)
+	•	created_at
+
+Tabelle indicator_values
+	•	Ergebniszeitreihe
+	•	Spalten:
+	•	instance_id (uuid)
+	•	ts (timestamptz)
+	•	value (numeric) oder values (jsonb) für multi-line (MACD)
+	•	UNIQUE (instance_id, ts)
+	•	Index (instance_id, ts DESC)
+
+Best Practice Hinweise
+	•	Candle-Bucket ts immer auf Timeframe-Start runden (Server-seitig deterministisch).
+	•	“Final candle” ist wichtig fürs Backtesting/Signals.
+	•	Schreibe SQL für “last N candles” effizient (Limit + order).
+
+⸻
+
+3) Phoenix Backend Design (Fly.io)
+
+Gib eine modulare Phoenix-Struktur vor:
+
+Kontext-Module
+	•	MarketData Context:
+	•	Query functions: list_candles/4, get_latest_candle/3
+	•	Insert/upsert: upsert_candle/1
+	•	Indicators Context:
+	•	registry/definitions
+	•	compute pipeline (siehe Abschnitt 6)
+	•	Streaming:
+	•	Channel Topics: "candles:{source}:{symbol}:{tf}"
+	•	Broadcast: Phoenix.PubSub + Endpoint.broadcast
+
+Channels
+	•	CandlesChannel:
+	•	join topic
+	•	beim join optional: last candle + server time senden
+	•	events:
+	•	candle_snapshot (initial N candles optional)
+	•	candle_update (laufende Candle Update)
+	•	candle_final (Candle geschlossen)
+	•	optional: indicator_update (wenn Server Indikatoren streamt)
+
+REST API
+	•	GET /api/candles?source=&symbol=&tf=&from=&to=&limit=
+	•	GET /api/indicators/definitions
+	•	POST /api/indicators/instances (später)
+	•	GET /api/indicators/values?instance_id=&from=&to=&limit=
+
+Hosting / Fly.io Best Practices
+	•	Stateless App, Supabase Postgres als externes DB
+	•	Konfiguration via ENV: DATABASE_URL, SECRET_KEY_BASE, etc.
+	•	Healthcheck endpoint
+	•	WebSocket Zeitouts beachten, Reconnect-freundliche Topics
+
+⸻
+
+4) Message-Formate (WS + REST)
+
+Definiere JSON Schemas (Beispiele) und Regeln:
+
+Candle
+
+{
+  "type": "candle_update",
+  "source": "capitalcom",
+  "symbol": "EURUSD",
+  "tf": "1m",
+  "ts": "2025-12-26T12:34:00Z",
+  "o": 1.1234,
+  "h": 1.1240,
+  "l": 1.1230,
+  "c": 1.1238,
+  "v": 1023.0,
+  "is_final": false
+}
+
+Regeln
+	•	ts ist immer Bucket Start
+	•	is_final=true kommt genau einmal pro Bucket
+	•	Bei Reconnect: Client holt History per REST und subscribed danach erneut
+
+⸻
+
+5) Frontend: Astro + Alpine + WASM + JS Charts
+
+Erstelle ein Setup-Plan inkl. Dateistruktur:
+
+Dateistruktur
+	•	/src/pages/index.astro – Layout + Container + Controls
+	•	/src/lib/chart.js – JS wrapper
+	•	/src/lib/wasm-bridge.ts – lädt WASM, bindet UI Events
+	•	/public/wasm/trading_ui_bg.wasm + trading_ui.js
+
+UI Controls (Alpine)
+	•	Symbol Dropdown
+	•	Timeframe Dropdown
+	•	Toggle “Indicators” (RSI/EMA/MACD)
+	•	Connection status + reconnect button
+
+Chart Integration
+	•	chart.js exportiert:
+	•	createChart(containerId, options)
+	•	setCandles(seriesId, candles[])
+	•	updateCandle(seriesId, candle)
+	•	setLineSeries(seriesId, points[]) / updateLinePoint(seriesId, point)
+	•	addMarker(seriesId, marker)
+
+⸻
+
+6) Indikatoren: modular, erweiterbar, Best Practice
+
+Ziel: Indikatoren sollen leicht nachrüstbar sein, ohne Chaos.
+
+Zwei Modi (planen, aber MVP simpel halten)
+	1.	Client-computed (WASM) – schnell fürs UI
+	•	WASM berechnet z.B. EMA/RSI aus Candle Stream
+	•	Vorteil: keine Serverlast, sehr responsive
+	•	Nachteil: Ergebnisse nicht zentral gespeichert
+	2.	Server-computed (Phoenix Worker) – “source of truth”
+	•	Server berechnet Indikatoren und speichert in indicator_values
+	•	streamed optional Updates via Channel
+	•	Vorteil: reproduzierbar, für Backtesting/Signals nutzbar
+
+Empfehlung: MVP client-computed, später server-computed ergänzen.
+
+Indikator-Plugin Pattern (WASM und/oder Server)
+
+Definiere ein Interface:
+	•	Input: stream von Candles
+	•	Output: stream von Points (ts, value) oder multi-values
+
+Beispiel (konzeptionell):
+	•	Indicator trait (Rust) / behaviour (Elixir)
+	•	init(params, tf)
+	•	on_candle(candle) -> [points]
+	•	reset(history)
+
+Best Practices für Indikatoren
+	•	Rolling Window effizient: Ringbuffer/Deque
+	•	“Final candle”: bei is_final=true committen, sonst nur “preview” updaten
+	•	Numerische Stabilität: keine unnötigen float Fehler; klare rounding policy
+	•	Multi-line Indikatoren (MACD): ein values: {macd, signal, hist} Schema
+
+⸻
+
+7) Rust→WASM UI Core: Responsibilities + API
+
+Beschreibe die WASM Export API und State Machine:
+
+Exports (WASM)
+	•	init(config_json)
+	•	connect(source, symbol, tf, ws_url)
+	•	disconnect()
+	•	set_symbol(symbol) / set_timeframe(tf) (macht intern resync)
+	•	toggle_indicator(name, params_json, enabled)
+
+Internes Verhalten
+	•	beim connect:
+	1.	REST history laden (last N candles)
+	2.	chart.setCandles(…)
+	3.	WS subscribe
+	•	bei candle_update:
+	•	update state
+	•	chart.updateCandle(…)
+	•	indikator pipeline: update line points
+	•	bei reconnect:
+	•	exponential backoff
+	•	REST resync ab letztem final candle
+
+⸻
+
+8) Schritt-für-Schritt Implementierungsplan (MVP → Ausbau)
+
+Gib eine Roadmap mit klaren Milestones:
+
+MVP
+	1.	Phoenix: REST GET /candles aus Supabase
+	2.	Phoenix: Channel candles:* mit Dummy Stream (Sim)
+	3.	Frontend: Astro Seite + JS chart wrapper
+	4.	WASM: History load + WS subscribe + chart updates
+	5.	Indikator: EMA (client-computed)
+
+Ausbau
+	•	Reale Data Ingestion (Capital.com etc.) als separater Connector/Worker
+	•	Server-side Indikatoren + Speicherung
+	•	Signal/Marker stream (Entries/Exits)
+	•	Auth/RLS
+
+⸻
+
+9) Liefere Ergebnisse in dieser Form
+
+Du (Claude) sollst ausgeben:
+	1.	Architekturdiagramm als textbasiertes Diagramm (Boxen + Pfeile)
+	2.	Supabase SQL DDL (copy/paste)
+	3.	Phoenix Module Skeleton (Dateiliste + zentrale Code-Snippets)
+	4.	Channel Topic/Events + Payload Examples
+	5.	Frontend File Skeleton (Astro + JS wrapper + wasm-bridge)
+	6.	Rust/WASM Skeleton (Module + wasm-bindgen Brücken)
+	7.	Indikator Plugin Pattern + ein Beispiel (EMA) + Best Practices
+	8.	Reconnect/Resync Strategie detailliert
+
+Wichtig:
+	•	Schreibe pragmatisch, keine Buzzwords.
+	•	Alles modular: neue Quellen (Broker), neue Indikatoren, neue Timeframes sollen ohne Rewrite passen.
+	•	MVP zuerst, aber Architektur nicht verbauen.
+
+⸻

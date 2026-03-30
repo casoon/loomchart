@@ -1,0 +1,179 @@
+---
+// Drawing Toolbar Component
+// Provides UI for selecting drawing tools
+---
+
+<div id="drawing-toolbar" class="drawing-toolbar">
+  <button
+    data-tool="cursor"
+    class="tool-btn active"
+    title="Cursor (Esc)"
+    aria-label="Select cursor tool">
+    <span class="tool-icon">⌖</span>
+  </button>
+
+  <div class="toolbar-separator"></div>
+
+  <button
+    data-tool="trendline"
+    class="tool-btn"
+    title="Trend Line"
+    aria-label="Draw trend line">
+    <span class="tool-icon">📈</span>
+  </button>
+
+  <button
+    data-tool="horizontal"
+    class="tool-btn"
+    title="Horizontal Line"
+    aria-label="Draw horizontal line">
+    <span class="tool-icon">—</span>
+  </button>
+
+  <button
+    data-tool="vertical"
+    class="tool-btn"
+    title="Vertical Line"
+    aria-label="Draw vertical line">
+    <span class="tool-icon">|</span>
+  </button>
+</div>
+
+<style>
+  .drawing-toolbar {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 6px;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .toolbar-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 2px 0;
+  }
+
+  .tool-btn {
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 18px;
+    padding: 0;
+  }
+
+  .tool-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .tool-btn.active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: rgb(59, 130, 246);
+  }
+
+  .tool-btn:active {
+    transform: scale(0.95);
+  }
+
+  .tool-icon {
+    display: block;
+    line-height: 1;
+  }
+
+  /* Hide on mobile for now */
+  @media (max-width: 768px) {
+    .drawing-toolbar {
+      left: 50%;
+      top: auto;
+      bottom: 80px;
+      transform: translateX(-50%);
+      flex-direction: row;
+    }
+
+    .toolbar-separator {
+      width: 1px;
+      height: auto;
+      margin: 0 2px;
+    }
+  }
+</style>
+
+<script>
+  import { ToolController, ToolType } from '../lib/tools/tool-controller';
+
+  // This will be initialized by the chart when it's ready
+  let toolController: ToolController | null = null;
+
+  // Export initialization function to be called from rust-chart.ts
+  (window as any).initDrawingToolbar = (controller: ToolController) => {
+    toolController = controller;
+    setupToolbarHandlers();
+  };
+
+  function setupToolbarHandlers() {
+    const toolbar = document.getElementById('drawing-toolbar');
+    if (!toolbar) return;
+
+    const buttons = toolbar.querySelectorAll('.tool-btn');
+
+    buttons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const btn = e.currentTarget as HTMLElement;
+        const toolType = btn.dataset.tool as ToolType;
+
+        if (!toolController) return;
+
+        // Activate tool
+        toolController.activateTool(toolType);
+
+        // Update button states
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Listen for tool changes from controller
+    const chartContainer = document.getElementById('chart-container');
+    if (chartContainer) {
+      chartContainer.addEventListener('toolchange', ((e: CustomEvent) => {
+        const { tool } = e.detail;
+
+        // Update button states
+        buttons.forEach(btn => {
+          const btnTool = btn.getAttribute('data-tool');
+          if (btnTool === tool) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+      }) as EventListener);
+    }
+
+    // Keyboard shortcut: Escape to return to cursor
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && toolController) {
+        toolController.cancel();
+      }
+    });
+  }
+</script>

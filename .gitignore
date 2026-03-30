@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Phoenix
+apps/phoenix/_build/
+apps/phoenix/deps/
+apps/phoenix/.fetch
+apps/phoenix/erl_crash.dump
+apps/phoenix/*.ez
+apps/phoenix/priv/static/assets/
+apps/phoenix/.elixir_ls/
+
+# Rust/WASM
+packages/wasm-core/target/
+packages/wasm-core/pkg/
+packages/wasm-core/Cargo.lock
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Astro
+apps/frontend/.astro/
+target/
+
+# Temporary files
+temp/
+
+# Local planning (not for public)
+ROADMAP.md
+
+# WASM build output
+apps/frontend/src/wasm/*.wasm

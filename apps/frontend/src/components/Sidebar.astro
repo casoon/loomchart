@@ -1,0 +1,321 @@
+---
+// Sidebar component
+---
+
+<aside class="fixed flex h-full flex-col border-r border-border bg-card transition-all duration-300 ease-in-out z-40 w-[72px]">
+  <!-- Toggle Button -->
+  <button
+    class="absolute -right-3 top-6 z-30 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+    aria-label="Expand sidebar"
+    @click="sidebarExpanded = !sidebarExpanded"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+      <path d="m9 18 6-6-6-6"></path>
+    </svg>
+  </button>
+
+  <!-- Logo -->
+  <div class="flex h-16 items-center px-3 py-4">
+    <div class="flex items-center gap-2">
+      <div class="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-primary-foreground">
+          <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Navigation -->
+  <div class="flex-1 overflow-auto py-2">
+    <!-- Chart Section -->
+    <div class="px-3 py-2">
+      <div class="space-y-1">
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          title="Dashboard"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <rect width="7" height="9" x="3" y="3" rx="1"></rect>
+            <rect width="7" height="5" x="14" y="3" rx="1"></rect>
+            <rect width="7" height="9" x="14" y="12" rx="1"></rect>
+            <rect width="7" height="5" x="3" y="16" rx="1"></rect>
+          </svg>
+        </button>
+
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Candlestick Chart"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M5 21v-6"></path>
+            <path d="M12 21V9"></path>
+            <path d="M19 21V3"></path>
+          </svg>
+        </button>
+
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Line Chart"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M3 3v16a2 2 0 0 0 2 2h16"></path>
+            <path d="m19 9-5 5-4-4-3 3"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tools Section -->
+    <div class="px-3 py-2">
+      <div class="space-y-1">
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Indicators"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="m12 14 4-4"></path>
+            <path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Drawing Tools Section -->
+    <div class="px-3 py-2 border-t border-border" x-data="sidebarDrawingTools()">
+      <div class="space-y-1">
+        <!-- Cursor / Select -->
+        <button
+          @click="setTool('cursor')"
+          :class="activeTool === 'cursor' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Select (V)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+          </svg>
+        </button>
+
+        <!-- Trend Line -->
+        <button
+          @click="setTool('trendline')"
+          :class="activeTool === 'trendline' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Trend Line (T)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20l16-16" />
+          </svg>
+        </button>
+
+        <!-- Horizontal Line -->
+        <button
+          @click="setTool('horizontal')"
+          :class="activeTool === 'horizontal' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Horizontal Line (H)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h16" />
+          </svg>
+        </button>
+
+        <!-- Vertical Line -->
+        <button
+          @click="setTool('vertical')"
+          :class="activeTool === 'vertical' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Vertical Line (L)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16" />
+          </svg>
+        </button>
+
+        <!-- Rectangle -->
+        <button
+          @click="setTool('rectangle')"
+          :class="activeTool === 'rectangle' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Rectangle (R)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="4" y="6" width="16" height="12" stroke-width="2" rx="2" />
+          </svg>
+        </button>
+
+        <!-- Fibonacci -->
+        <button
+          @click="setTool('fibonacci')"
+          :class="activeTool === 'fibonacci' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent hover:text-accent-foreground'"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center"
+          title="Fibonacci (F)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 20V4M20 20V4M4 4h16M4 8h16M4 12h16M4 16h16M4 20h16" />
+          </svg>
+        </button>
+
+        <!-- Delete -->
+        <button
+          @click="deleteSelected()"
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center bg-background hover:bg-destructive/10 text-destructive"
+          title="Delete (Del)"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Other Tools Section -->
+    <div class="px-3 py-2 border-t border-border">
+      <div class="space-y-1">
+
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Alerts"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M10.268 21a2 2 0 0 0 3.464 0"></path>
+            <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path>
+          </svg>
+        </button>
+
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Watchlist"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="m19 9-5 5-4-4-3 3"></path>
+            <path d="M16 7h6v6"></path>
+            <path d="m22 7-8.5 8.5-5-5L2 17"></path>
+          </svg>
+        </button>
+
+        <button
+          class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full px-2 justify-center hover:bg-accent hover:text-accent-foreground bg-background"
+          title="Compare"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"></path>
+            <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"></path>
+            <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Settings -->
+  <div class="mt-auto border-t border-border p-3">
+    <div class="space-y-1">
+      <button
+        class="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors h-10 py-2 w-full justify-start px-2 hover:bg-accent hover:text-accent-foreground bg-background"
+        title="Settings"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+          <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<style>
+  .border-border {
+    border-color: hsl(var(--border));
+  }
+  .bg-card {
+    background-color: hsl(var(--card));
+  }
+  .bg-background {
+    background-color: hsl(var(--background));
+  }
+  .bg-primary {
+    background-color: hsl(var(--primary));
+  }
+  .text-primary-foreground {
+    color: hsl(var(--primary-foreground));
+  }
+  .bg-secondary {
+    background-color: hsl(var(--secondary));
+  }
+  .text-secondary-foreground {
+    color: hsl(var(--secondary-foreground));
+  }
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+  .text-foreground {
+    color: hsl(var(--foreground));
+  }
+  .hover\:bg-accent:hover {
+    background-color: hsl(var(--accent));
+  }
+  .hover\:text-accent-foreground:hover {
+    color: hsl(var(--accent-foreground));
+  }
+  .hover\:bg-secondary\/80:hover {
+    background-color: hsl(var(--secondary) / 0.8);
+  }
+  .hover\:bg-destructive\/10:hover {
+    background-color: hsl(var(--destructive) / 0.1);
+  }
+  .text-destructive {
+    color: hsl(var(--destructive));
+  }
+</style>
+
+<script>
+  import Alpine from 'alpinejs';
+
+  function sidebarDrawingTools() {
+    return {
+      activeTool: 'cursor',
+
+      setTool(tool: string) {
+        this.activeTool = tool;
+
+        // Notify WASM about tool change
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          try {
+            wasm.set_drawing_mode?.(tool);
+          } catch (err) {
+            console.warn('Failed to set drawing mode:', err);
+          }
+        }
+
+        // Update cursor style
+        const chartContainer = document.getElementById('main-chart');
+        if (chartContainer) {
+          chartContainer.style.cursor = tool === 'cursor' ? 'default' : 'crosshair';
+        }
+
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('drawing-tool-changed', {
+          detail: { tool }
+        }));
+      },
+
+      deleteSelected() {
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          try {
+            wasm.delete_selected_drawing?.();
+            (window as any).showToast?.('success', 'Drawing deleted');
+          } catch (err) {
+            console.warn('No drawing selected to delete');
+          }
+        }
+      }
+    };
+  }
+
+  // Register Alpine component
+  if (typeof window !== 'undefined') {
+    Alpine.data('sidebarDrawingTools', sidebarDrawingTools);
+  }
+</script>

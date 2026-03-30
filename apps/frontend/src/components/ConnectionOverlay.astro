@@ -1,0 +1,74 @@
+---
+// Connection status overlay component
+// Shows reconnecting/disconnected status over the chart
+---
+
+<div
+  x-show="connectionStatus === 'reconnecting' || connectionStatus === 'disconnected' || connectionStatus === 'error'"
+  x-transition:enter="transition ease-out duration-200"
+  x-transition:enter-start="opacity-0"
+  x-transition:enter-end="opacity-100"
+  x-transition:leave="transition ease-in duration-150"
+  x-transition:leave-start="opacity-100"
+  x-transition:leave-end="opacity-0"
+  class="absolute inset-0 bg-surface/80 backdrop-blur-sm flex items-center justify-center z-10"
+>
+  <div class="flex flex-col items-center gap-4 p-6 rounded-lg bg-surface border border-default shadow-lg">
+    <!-- Reconnecting State -->
+    <template x-if="connectionStatus === 'reconnecting'">
+      <div class="flex flex-col items-center gap-3">
+        <div class="w-8 h-8 border-3 border-warning/30 border-t-warning rounded-full animate-spin"></div>
+        <div class="text-center">
+          <h3 class="font-semibold text-primary">Reconnecting...</h3>
+          <p class="text-secondary text-sm mt-1">Attempting to restore connection</p>
+        </div>
+      </div>
+    </template>
+
+    <!-- Disconnected/Error State -->
+    <template x-if="connectionStatus === 'disconnected' || connectionStatus === 'error'">
+      <div class="flex flex-col items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
+          <svg class="w-5 h-5 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" />
+          </svg>
+        </div>
+        <div class="text-center">
+          <h3 class="font-semibold text-primary" x-text="connectionStatus === 'error' ? 'Connection Error' : 'Disconnected'"></h3>
+          <p class="text-secondary text-sm mt-1" x-text="connectionStatus === 'error' ? 'Failed to connect to server' : 'Connection lost'"></p>
+        </div>
+        <button
+          x-on:click="refresh()"
+          class="px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded text-sm transition-colors"
+        >
+          Reconnect
+        </button>
+      </div>
+    </template>
+  </div>
+</div>
+
+<style>
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+  .border-3 {
+    border-width: 3px;
+  }
+  .border-warning\/30 {
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .border-t-warning {
+    border-top-color: rgb(245, 158, 11);
+  }
+  .text-error {
+    color: rgb(239, 68, 68);
+  }
+  .bg-error\/10 {
+    background-color: rgba(239, 68, 68, 0.1);
+  }
+</style>

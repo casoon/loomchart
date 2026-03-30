@@ -1,0 +1,294 @@
+---
+// Chart pan/scroll functionality (NO ZOOM - explicit requirement)
+// Scroll wheel for horizontal panning, click-drag for panning
+---
+
+<script>
+  interface PanState {
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+  }
+
+  interface ChartViewport {
+    offsetX: number;  // Horizontal pan offset
+    offsetY: number;  // Vertical pan offset (for multi-panel)
+    visibleBars: number;  // Number of bars visible
+    startIndex: number;  // First visible bar index
+  }
+
+  class ChartPanManager {
+    private panState: PanState = {
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0
+    };
+
+    private viewport: ChartViewport = {
+      offsetX: 0,
+      offsetY: 0,
+      visibleBars: 100,
+      startIndex: 0
+    };
+
+    private chartContainer: HTMLElement | null = null;
+    private isEnabled: boolean = true;
+
+    constructor() {
+      this.init();
+    }
+
+    private init(): void {
+      // Wait for chart container to be available
+      const checkContainer = setInterval(() => {
+        this.chartContainer = document.querySelector('#chart-main-container');
+        if (this.chartContainer) {
+          clearInterval(checkContainer);
+          this.setupEventListeners();
+        }
+      }, 100);
+    }
+
+    private setupEventListeners(): void {
+      if (!this.chartContainer) return;
+
+      // Mouse drag for panning
+      this.chartContainer.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+      document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+      document.addEventListener('mouseup', () => this.handleMouseUp());
+
+      // Scroll wheel for horizontal panning (NOT ZOOM)
+      this.chartContainer.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+
+      // Touch support for mobile
+      this.chartContainer.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+      this.chartContainer.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+      this.chartContainer.addEventListener('touchend', () => this.handleTouchEnd());
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    }
+
+    private handleMouseDown(e: MouseEvent): void {
+      // Only pan on left-click (not right-click for context menu)
+      if (e.button !== 0) return;
+
+      // Don't interfere with axis dragging
+      if ((e.target as HTMLElement).closest('.axis')) return;
+
+      this.panState.isDragging = true;
+      this.panState.startX = e.clientX;
+      this.panState.startY = e.clientY;
+      this.panState.lastX = e.clientX;
+      this.panState.lastY = e.clientY;
+
+      if (this.chartContainer) {
+        this.chartContainer.style.cursor = 'grabbing';
+      }
+
+      e.preventDefault();
+    }
+
+    private handleMouseMove(e: MouseEvent): void {
+      if (!this.panState.isDragging || !this.isEnabled) return;
+
+      const deltaX = e.clientX - this.panState.lastX;
+      const deltaY = e.clientY - this.panState.lastY;
+
+      this.pan(deltaX, deltaY);
+
+      this.panState.lastX = e.clientX;
+      this.panState.lastY = e.clientY;
+    }
+
+    private handleMouseUp(): void {
+      if (this.panState.isDragging) {
+        this.panState.isDragging = false;
+
+        if (this.chartContainer) {
+          this.chartContainer.style.cursor = 'default';
+        }
+      }
+    }
+
+    private handleWheel(e: WheelEvent): void {
+      if (!this.isEnabled) return;
+
+      e.preventDefault();
+
+      // Horizontal scroll for panning (NOT ZOOM)
+      // Shift+Wheel or trackpad horizontal gesture
+      const deltaX = e.shiftKey ? e.deltaY : e.deltaX;
+      const deltaY = e.shiftKey ? 0 : e.deltaY;
+
+      // IMPORTANT: Only pan, never zoom
+      // Use deltaX for horizontal panning
+      this.pan(-deltaX, 0);
+    }
+
+    private handleTouchStart(e: TouchEvent): void {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        this.panState.isDragging = true;
+        this.panState.startX = touch.clientX;
+        this.panState.startY = touch.clientY;
+        this.panState.lastX = touch.clientX;
+        this.panState.lastY = touch.clientY;
+        e.preventDefault();
+      }
+    }
+
+    private handleTouchMove(e: TouchEvent): void {
+      if (!this.panState.isDragging || e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - this.panState.lastX;
+      const deltaY = touch.clientY - this.panState.lastY;
+
+      this.pan(deltaX, deltaY);
+
+      this.panState.lastX = touch.clientX;
+      this.panState.lastY = touch.clientY;
+
+      e.preventDefault();
+    }
+
+    private handleTouchEnd(): void {
+      this.panState.isDragging = false;
+    }
+
+    private handleKeyDown(e: KeyboardEvent): void {
+      if (!this.isEnabled) return;
+
+      const panSpeed = 50;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          this.pan(panSpeed, 0);
+          e.preventDefault();
+          break;
+        case 'ArrowRight':
+          this.pan(-panSpeed, 0);
+          e.preventDefault();
+          break;
+        case 'ArrowUp':
+          this.pan(0, panSpeed);
+          e.preventDefault();
+          break;
+        case 'ArrowDown':
+          this.pan(0, -panSpeed);
+          e.preventDefault();
+          break;
+        case 'Home':
+          this.jumpToStart();
+          e.preventDefault();
+          break;
+        case 'End':
+          this.jumpToEnd();
+          e.preventDefault();
+          break;
+      }
+    }
+
+    private pan(deltaX: number, deltaY: number): void {
+      // Update viewport offsets
+      this.viewport.offsetX += deltaX;
+      this.viewport.offsetY += deltaY;
+
+      // Convert pixel offset to bar offset
+      const barWidth = this.getBarWidth();
+      const barDelta = Math.floor(deltaX / barWidth);
+
+      if (barDelta !== 0) {
+        this.viewport.startIndex = Math.max(0, this.viewport.startIndex - barDelta);
+      }
+
+      // Notify chart to redraw
+      this.notifyPanChange();
+    }
+
+    private getBarWidth(): number {
+      // Get current bar width from chart state
+      // Default to 8px if not available
+      const chartState = (window as any).chartState;
+      return chartState?.barWidth || 8;
+    }
+
+    private jumpToStart(): void {
+      this.viewport.startIndex = 0;
+      this.viewport.offsetX = 0;
+      this.notifyPanChange();
+    }
+
+    private jumpToEnd(): void {
+      // Get total candle count from chart state
+      const chartState = (window as any).chartState;
+      const totalBars = chartState?.totalBars || 1000;
+
+      this.viewport.startIndex = Math.max(0, totalBars - this.viewport.visibleBars);
+      this.viewport.offsetX = 0;
+      this.notifyPanChange();
+    }
+
+    private notifyPanChange(): void {
+      const event = new CustomEvent('chart-pan', {
+        detail: {
+          offsetX: this.viewport.offsetX,
+          offsetY: this.viewport.offsetY,
+          startIndex: this.viewport.startIndex,
+          visibleBars: this.viewport.visibleBars
+        }
+      });
+      window.dispatchEvent(event);
+    }
+
+    public setEnabled(enabled: boolean): void {
+      this.isEnabled = enabled;
+    }
+
+    public resetViewport(): void {
+      this.viewport = {
+        offsetX: 0,
+        offsetY: 0,
+        visibleBars: 100,
+        startIndex: 0
+      };
+      this.notifyPanChange();
+    }
+
+    public getViewport(): ChartViewport {
+      return { ...this.viewport };
+    }
+
+    public setVisibleBars(count: number): void {
+      this.viewport.visibleBars = Math.max(10, Math.min(1000, count));
+      this.notifyPanChange();
+    }
+  }
+
+  // Initialize
+  if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+      (window as any).chartPanManager = new ChartPanManager();
+    });
+  }
+</script>
+
+<style>
+  /* Cursor feedback for panning */
+  :global(#chart-main-container) {
+    cursor: default;
+  }
+
+  :global(#chart-main-container.panning) {
+    cursor: grabbing !important;
+  }
+
+  :global(#chart-main-container.pan-enabled:not(.panning)) {
+    cursor: grab;
+  }
+</style>

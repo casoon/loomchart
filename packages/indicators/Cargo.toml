@@ -1,0 +1,51 @@
+[package]
+name = "loom-indicators"
+version = "0.1.0"
+edition = "2021"
+authors = ["Loom Team"]
+description = "Technical analysis indicators library - pure Rust, no_std compatible"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/casoon/loom"
+keywords = ["trading", "technical-analysis", "indicators", "finance", "stocks"]
+categories = ["algorithms", "mathematics", "no-std"]
+readme = "README.md"
+
+[lib]
+name = "loom_indicators"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[features]
+default = ["std"]
+std = []
+# Enable all indicators
+full = ["trend", "momentum", "volatility", "volume", "patterns"]
+# Individual indicator groups
+trend = []
+momentum = []
+volatility = []
+volume = []
+patterns = []
+# WASM support
+wasm = ["std"]
+# Serde serialization
+serde = ["dep:serde"]
+
+[dependencies]
+# Optional: serde for serialization
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+# For no_std environments
+libm = "0.2"
+
+[dev-dependencies]
+approx = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.release-small]
+inherits = "release"
+opt-level = "s"
+strip = true

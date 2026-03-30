@@ -1,0 +1,31 @@
+# Development Dockerfile for Phoenix
+FROM elixir:1.16-alpine
+
+# Install build dependencies
+RUN apk add --no-cache build-base git npm
+
+# Set working directory
+WORKDIR /app
+
+# Install hex and rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy mix files
+COPY mix.exs mix.lock ./
+
+# Install dependencies
+RUN mix deps.get
+
+# Copy configuration
+COPY config config
+
+# Compile dependencies
+RUN mix deps.compile
+
+# Copy application code
+COPY lib lib
+COPY priv priv
+
+# Default command
+CMD ["mix", "phx.server"]

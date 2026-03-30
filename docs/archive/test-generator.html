@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loom - CandleGenerator Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4fc3f7;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #9cdcfe;
+            font-weight: 500;
+        }
+        select, input, button {
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #3e3e3e;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-size: 14px;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        button {
+            background: #4fc3f7;
+            color: #1e1e1e;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #6dd5ff;
+        }
+        button:active {
+            background: #29b6f6;
+        }
+        #chart {
+            background: #2d2d2d;
+            border-radius: 8px;
+            min-height: 500px;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .status.success {
+            background: #2e7d32;
+            color: #c8e6c9;
+        }
+        .status.error {
+            background: #c62828;
+            color: #ffcdd2;
+        }
+        .status.info {
+            background: #1565c0;
+            color: #bbdefb;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 CandleGenerator Test</h1>
+
+        <div class="controls">
+            <div class="grid">
+                <div class="control-group">
+                    <label for="market">Market Type</label>
+                    <select id="market">
+                        <option value="crypto">Crypto (24/7)</option>
+                        <option value="stock">Stock (9:30-16:00)</option>
+                        <option value="forex">Forex (24/5)</option>
+                        <option value="futures">Futures</option>
+                        <option value="commodities">Commodities</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="trend">Trend</label>
+                    <select id="trend">
+                        <option value="bullish_strong">Bullish Strong</option>
+                        <option value="bullish_mild">Bullish Mild</option>
+                        <option value="sideways" selected>Sideways</option>
+                        <option value="bearish_mild">Bearish Mild</option>
+                        <option value="bearish_strong">Bearish Strong</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="volatility">Volatility</label>
+                    <select id="volatility">
+                        <option value="low">Low</option>
+                        <option value="normal" selected>Normal</option>
+                        <option value="high">High</option>
+                        <option value="extreme">Extreme</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="count">Candle Count</label>
+                    <input type="number" id="count" value="500" min="10" max="2000">
+                </div>
+            </div>
+
+            <div class="control-group" style="margin-top: 20px;">
+                <button onclick="generateAndLoad()">Generate & Load Candles</button>
+            </div>
+
+            <div id="status"></div>
+        </div>
+
+        <div id="chart"></div>
+    </div>
+
+    <script type="module">
+        let wasm;
+
+        async function init() {
+            try {
+                showStatus('Loading WASM module...', 'info');
+
+                // Import WASM module
+                const wasmModule = await import('./packages/chart/public/wasm/trading_ui.js');
+                await wasmModule.default();
+                wasm = wasmModule;
+
+                // Initialize with config
+                const config = {
+                    ws_url: "ws://localhost:4000/socket/websocket"
+                };
+
+                wasm.init(JSON.stringify(config));
+
+                showStatus('WASM module loaded successfully!', 'success');
+                console.log('WASM initialized');
+            } catch (error) {
+                showStatus(`Failed to load WASM: ${error.message}`, 'error');
+                console.error('WASM init error:', error);
+            }
+        }
+
+        window.generateAndLoad = async function() {
+            if (!wasm) {
+                showStatus('WASM module not loaded yet', 'error');
+                return;
+            }
+
+            const market = document.getElementById('market').value;
+            const trend = document.getElementById('trend').value;
+            const volatility = document.getElementById('volatility').value;
+            const count = parseInt(document.getElementById('count').value);
+
+            try {
+                showStatus(`Generating ${count} ${market} candles...`, 'info');
+
+                // Call the WASM function
+                wasm.load_test_data(market, trend, volatility, count);
+
+                showStatus(`Successfully loaded ${count} candles!`, 'success');
+                console.log('Candles loaded');
+
+                // Get the last candle to verify
+                const lastCandleJson = wasm.get_last_candle();
+                if (lastCandleJson) {
+                    const lastCandle = JSON.parse(lastCandleJson);
+                    console.log('Last candle:', lastCandle);
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                console.error('Generation error:', error);
+            }
+        };
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>

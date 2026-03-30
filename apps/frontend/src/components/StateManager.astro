@@ -1,0 +1,257 @@
+---
+// State Manager - Save/Load Chart States
+---
+
+<div
+  id="state-manager-modal"
+  x-data="{ open: $store.stateManagerOpen }"
+  x-show="$store.stateManagerOpen"
+  @click.self="$store.stateManagerOpen = false"
+  class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center"
+  style="display: none;"
+  x-cloak
+>
+  <div
+    class="bg-card border border-border rounded-lg shadow-xl w-[600px] max-h-[80vh] overflow-hidden flex flex-col"
+    @click.stop
+  >
+    <!-- Header -->
+    <div class="flex items-center justify-between p-4 border-b border-border">
+      <h3 class="text-lg font-semibold text-foreground">Chart State Management</h3>
+      <button
+        @click="$store.stateManagerOpen = false"
+        class="text-muted-foreground hover:text-foreground transition"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+      <!-- Save Current State -->
+      <div class="bg-background rounded-lg p-4 border border-border">
+        <h4 class="text-sm font-semibold text-foreground mb-3">Save Current State</h4>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="state-name-input"
+            placeholder="Enter state name..."
+            class="flex-1 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
+          />
+          <button
+            @click="saveState()"
+            class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      <!-- Export/Import -->
+      <div class="bg-background rounded-lg p-4 border border-border">
+        <h4 class="text-sm font-semibold text-foreground mb-3">Export / Import</h4>
+        <div class="flex gap-2">
+          <button
+            @click="exportStateToFile()"
+            class="flex-1 px-4 py-2 bg-background border border-input rounded-md text-sm font-medium text-foreground hover:bg-accent transition"
+          >
+            Export to File
+          </button>
+          <button
+            @click="importStateFromFile()"
+            class="flex-1 px-4 py-2 bg-background border border-input rounded-md text-sm font-medium text-foreground hover:bg-accent transition"
+          >
+            Import from File
+          </button>
+        </div>
+      </div>
+
+      <!-- Saved States -->
+      <div class="bg-background rounded-lg p-4 border border-border">
+        <h4 class="text-sm font-semibold text-foreground mb-3">Saved States</h4>
+        <div id="saved-states-list" class="space-y-2">
+          <!-- Will be populated by JavaScript -->
+          <p class="text-xs text-muted-foreground text-center py-4">No saved states</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="state-file-input" accept=".json" style="display: none;" />
+
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+
+<script>
+  import { stateManager } from "../lib/state-manager";
+
+  // Initialize state manager store
+  document.addEventListener("alpine:init", () => {
+    (window as any).Alpine.store("stateManagerOpen", false);
+  });
+
+  // Load saved states when modal opens
+  document.addEventListener("alpine:initialized", () => {
+    const modal = document.getElementById("state-manager-modal");
+    if (modal) {
+      const observer = new MutationObserver(() => {
+        const isOpen = modal.style.display !== "none";
+        if (isOpen) {
+          loadSavedStates();
+        }
+      });
+      observer.observe(modal, { attributes: true, attributeFilter: ["style"] });
+    }
+  });
+
+  // Save state
+  (window as any).saveState = async function () {
+    const input = document.getElementById("state-name-input") as HTMLInputElement;
+    const name = input?.value.trim();
+
+    if (!name) {
+      alert("Please enter a name for the state");
+      return;
+    }
+
+    try {
+      await stateManager.save(name);
+      input.value = "";
+      loadSavedStates();
+      showToast("State saved successfully", "success");
+    } catch (error) {
+      console.error("Save error:", error);
+      showToast("Failed to save state", "error");
+    }
+  };
+
+  // Load saved states
+  async function loadSavedStates() {
+    const list = document.getElementById("saved-states-list");
+    if (!list) return;
+
+    try {
+      const states = await stateManager.getAllStates();
+
+      if (states.length === 0) {
+        list.innerHTML = '<p class="text-xs text-muted-foreground text-center py-4">No saved states</p>';
+        return;
+      }
+
+      list.innerHTML = states
+        .map(
+          (state) => `
+        <div class="flex items-center justify-between p-3 bg-card border border-border rounded-md hover:bg-accent transition">
+          <div class="flex-1">
+            <p class="text-sm font-medium text-foreground">${state.name}</p>
+            <p class="text-xs text-muted-foreground">${state.symbol} • ${state.timeframe} • ${new Date(state.timestamp).toLocaleString()}</p>
+          </div>
+          <div class="flex gap-2">
+            <button
+              onclick="loadState('${state.id}')"
+              class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 transition"
+            >
+              Load
+            </button>
+            <button
+              onclick="deleteState('${state.id}')"
+              class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:bg-destructive/90 transition"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+    } catch (error) {
+      console.error("Load states error:", error);
+      list.innerHTML = '<p class="text-xs text-red-500 text-center py-4">Error loading states</p>';
+    }
+  }
+
+  // Load state
+  (window as any).loadState = async function (id: string) {
+    try {
+      await stateManager.load(id);
+      showToast("State loaded successfully", "success");
+      (window as any).Alpine.store("stateManagerOpen", false);
+    } catch (error) {
+      console.error("Load state error:", error);
+      showToast("Failed to load state", "error");
+    }
+  };
+
+  // Delete state
+  (window as any).deleteState = async function (id: string) {
+    if (!confirm("Are you sure you want to delete this state?")) {
+      return;
+    }
+
+    try {
+      await stateManager.deleteState(id);
+      loadSavedStates();
+      showToast("State deleted successfully", "success");
+    } catch (error) {
+      console.error("Delete state error:", error);
+      showToast("Failed to delete state", "error");
+    }
+  };
+
+  // Export to file
+  (window as any).exportStateToFile = async function () {
+    try {
+      const stateJson = await stateManager.export();
+      const blob = new Blob([stateJson], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chart-state-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("State exported to file", "success");
+    } catch (error) {
+      console.error("Export error:", error);
+      showToast("Failed to export state", "error");
+    }
+  };
+
+  // Import from file
+  (window as any).importStateFromFile = function () {
+    const input = document.getElementById("state-file-input") as HTMLInputElement;
+    if (!input) return;
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        await stateManager.import(text);
+        showToast("State imported successfully", "success");
+        (window as any).Alpine.store("stateManagerOpen", false);
+      } catch (error) {
+        console.error("Import error:", error);
+        showToast("Failed to import state", "error");
+      }
+    };
+
+    input.click();
+  };
+
+  // Show toast notification
+  function showToast(message: string, type: "success" | "error") {
+    window.dispatchEvent(
+      new CustomEvent("showToast", {
+        detail: { message, type },
+      })
+    );
+  }
+</script>

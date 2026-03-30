@@ -1,0 +1,154 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Loom - Realtime Trading UI" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+
+    <!-- WASM Loader -->
+    <script type="module" src="/wasm-loader.js"></script>
+
+    <style>
+      :root {
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --primary: 217.2 91.2% 59.8%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+      }
+
+      /* Alpine.js x-cloak - hide elements until Alpine is ready */
+      [x-cloak] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <slot />
+
+    <!-- Viewport Debugging -->
+    <script>
+      // Viewport debugging - check for zoom issues
+      function debugViewport() {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const devicePixelRatio = window.devicePixelRatio;
+        const docWidth = document.documentElement.clientWidth;
+        const docHeight = document.documentElement.clientHeight;
+        const bodyWidth = document.body?.clientWidth;
+        const bodyHeight = document.body?.clientHeight;
+
+        const computedStyle = window.getComputedStyle(document.documentElement);
+        const zoom = computedStyle.zoom || '1';
+        const transform = computedStyle.transform;
+
+        const meta = document.querySelector('meta[name="viewport"]');
+        const viewportContent = meta?.getAttribute('content');
+
+        // Check all canvas elements for dimension mismatches
+        const canvases = document.querySelectorAll('canvas');
+        const canvasInfo = Array.from(canvases).map(canvas => {
+          const rect = canvas.getBoundingClientRect();
+          const cssWidth = rect.width;
+          const cssHeight = rect.height;
+          const canvasWidth = canvas.width;
+          const canvasHeight = canvas.height;
+          const scaleX = canvasWidth / cssWidth;
+          const scaleY = canvasHeight / cssHeight;
+
+          return {
+            id: canvas.id || canvas.className || 'unnamed',
+            css: { width: Math.round(cssWidth), height: Math.round(cssHeight) },
+            canvas: { width: canvasWidth, height: canvasHeight },
+            scale: { x: scaleX.toFixed(2), y: scaleY.toFixed(2) },
+            mismatch: Math.abs(scaleX - devicePixelRatio) > 0.1 || Math.abs(scaleY - devicePixelRatio) > 0.1
+          };
+        });
+
+        console.group('[Viewport Debug]');
+        console.log('Window:', { width: vw, height: vh });
+        console.log('Document:', { width: docWidth, height: docHeight });
+        console.log('Body:', { width: bodyWidth, height: bodyHeight });
+        console.log('Device Pixel Ratio:', devicePixelRatio);
+        console.log('CSS Zoom:', zoom);
+        console.log('CSS Transform:', transform);
+        console.log('Viewport Meta:', viewportContent);
+        console.log('Effective Zoom:', vw / docWidth);
+
+        if (canvasInfo.length > 0) {
+          console.group('Canvas Elements:');
+          canvasInfo.forEach(info => {
+            if (info.mismatch) {
+              console.warn('❌ MISMATCH:', info);
+            } else {
+              console.log('✅ OK:', info);
+            }
+          });
+          console.groupEnd();
+        }
+
+        console.groupEnd();
+      }
+
+      // Run on load
+      window.addEventListener('DOMContentLoaded', () => {
+        debugViewport();
+      });
+
+      // Run on resize
+      let resizeTimeout;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(debugViewport, 500);
+      });
+
+      // Make available globally for manual checks
+      window.debugViewport = debugViewport;
+
+      // Clear old corrupted auto-save data (one-time cleanup)
+      const oldAutoSave = localStorage.getItem('autosave-layout');
+      if (oldAutoSave && !oldAutoSave.includes('"version"')) {
+        console.log('[Layout] Clearing old auto-save layout without version');
+        localStorage.removeItem('autosave-layout');
+      }
+    </script>
+
+    <!-- Alpine.js - started after components register -->
+    <script>
+      import Alpine from 'alpinejs';
+      import persist from '@alpinejs/persist';
+
+      Alpine.plugin(persist);
+      window.Alpine = Alpine;
+
+      // Initialize global stores (Task 6.1, 6.2)
+      Alpine.store('layoutManagerOpen', false);
+      Alpine.store('layoutPresetsOpen', false);
+
+      // Start Alpine after a microtask to allow component scripts to register
+      queueMicrotask(() => {
+        console.log('[Layout] Starting Alpine.js');
+        Alpine.start();
+      });
+    </script>
+  </body>
+</html>

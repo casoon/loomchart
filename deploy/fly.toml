@@ -1,0 +1,45 @@
+# Fly.io deployment configuration
+# See https://fly.io/docs/reference/configuration/
+
+app = "loom-trading"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../apps/phoenix/Dockerfile"
+
+[env]
+  PHX_HOST = "loom-trading.fly.dev"
+  PORT = "8080"
+  MIX_ENV = "prod"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 800
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    interval = "10s"
+    timeout = "2s"
+
+[[statics]]
+  guest_path = "/app/priv/static"
+  url_prefix = "/static"

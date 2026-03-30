@@ -1,0 +1,338 @@
+---
+// Layout Manager Component
+// Task 6.1: Layout Serialization UI
+---
+
+<div
+  x-data="layoutManager()"
+  x-init="init()"
+  x-show="$store.layoutManagerOpen"
+  @click.self="close()"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+  x-cloak
+>
+  <div
+    @click.stop
+    class="relative w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-lg shadow-lg overflow-hidden flex flex-col"
+  >
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+      <h2 class="text-lg font-semibold text-foreground">Layout Manager</h2>
+      <button
+        @click="close()"
+        class="text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto px-6 py-4">
+      <!-- Save Current Layout -->
+      <div class="mb-6">
+        <h3 class="text-sm font-semibold text-foreground mb-3">Save Current Layout</h3>
+        <div class="flex gap-2">
+          <input
+            x-model="newLayoutName"
+            @keydown.enter="saveCurrentLayout()"
+            type="text"
+            placeholder="Enter layout name..."
+            class="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+          />
+          <button
+            @click="saveCurrentLayout()"
+            :disabled="!newLayoutName.trim()"
+            class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      <!-- Saved Layouts List -->
+      <div>
+        <h3 class="text-sm font-semibold text-foreground mb-3">Saved Layouts</h3>
+
+        <template x-if="layouts.length === 0">
+          <div class="text-center py-8 text-muted-foreground text-sm">
+            No saved layouts yet. Save your current layout to get started.
+          </div>
+        </template>
+
+        <div class="space-y-2">
+          <template x-for="layout in layouts" :key="layout.id">
+            <div class="bg-background border border-border rounded-md p-4 hover:border-primary/50 transition-colors">
+              <div class="flex items-start justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2">
+                    <h4 class="font-medium text-foreground" x-text="layout.name"></h4>
+                    <span
+                      x-show="layout.isDefault"
+                      class="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-md"
+                    >
+                      Default
+                    </span>
+                  </div>
+                  <p class="text-xs text-muted-foreground mt-1" x-text="formatTimestamp(layout.timestamp)"></p>
+                  <p class="text-xs text-muted-foreground mt-1">
+                    <span x-text="getPanelCount(layout)"></span> panels
+                  </p>
+                  <!-- Migration status (Task 6.3) -->
+                  <div x-show="needsMigration(layout.layout)" class="mt-2">
+                    <span class="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-xs rounded-md">
+                      Migration needed
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex gap-2">
+                  <!-- Load Button -->
+                  <button
+                    @click="loadLayout(layout.id)"
+                    class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition-colors"
+                    title="Load this layout"
+                  >
+                    Load
+                  </button>
+
+                  <!-- Export Button -->
+                  <button
+                    @click="exportLayout(layout)"
+                    class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-xs font-medium hover:bg-secondary/80 transition-colors"
+                    title="Export as JSON"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                  </button>
+
+                  <!-- Delete Button -->
+                  <button
+                    @click="deleteLayout(layout.id)"
+                    :disabled="layout.isDefault"
+                    class="px-3 py-1.5 bg-destructive/10 text-destructive rounded-md text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Delete this layout"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Import Layout -->
+      <div class="mt-6 pt-6 border-t border-border">
+        <h3 class="text-sm font-semibold text-foreground mb-3">Import Layout</h3>
+        <div class="flex gap-2">
+          <input
+            type="file"
+            accept=".json"
+            @change="importLayout($event)"
+            class="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/30">
+      <button
+        @click="clearAllLayouts()"
+        class="px-4 py-2 text-sm font-medium text-destructive hover:text-destructive/80 transition-colors"
+      >
+        Clear All
+      </button>
+      <button
+        @click="close()"
+        class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { layoutStorage, type SavedLayout } from '../lib/layout-storage';
+  import { needsMigration, getLayoutVersion, CURRENT_LAYOUT_VERSION } from '../lib/layout-migration';
+  import Alpine from 'alpinejs';
+
+  function layoutManager() {
+    return {
+      layouts: [] as SavedLayout[],
+      newLayoutName: '',
+
+      async init() {
+        // Initialize IndexedDB first
+        try {
+          await layoutStorage.init();
+        } catch (err) {
+          console.error('Failed to initialize IndexedDB:', err);
+        }
+        await this.refreshLayouts();
+      },
+
+      async refreshLayouts() {
+        try {
+          this.layouts = await layoutStorage.getAllLayouts();
+        } catch (err) {
+          console.error('Failed to load layouts:', err);
+        }
+      },
+
+      async saveCurrentLayout() {
+        if (!this.newLayoutName.trim()) return;
+
+        try {
+          const wasm = (window as any).getWasm?.();
+          if (!wasm) {
+            throw new Error('WASM not initialized');
+          }
+
+          const layoutJson = await wasm.get_panel_layout();
+          await layoutStorage.saveLayout(this.newLayoutName, layoutJson, false);
+
+          (window as any).showToast?.('success', `Layout "${this.newLayoutName}" saved`);
+          this.newLayoutName = '';
+          await this.refreshLayouts();
+        } catch (err) {
+          console.error('Failed to save layout:', err);
+          (window as any).showToast?.('error', 'Failed to save layout');
+        }
+      },
+
+      async loadLayout(id: string) {
+        try {
+          const saved = await layoutStorage.loadLayout(id);
+          if (!saved) {
+            throw new Error('Layout not found');
+          }
+
+          const wasm = (window as any).getWasm?.();
+          if (!wasm) {
+            throw new Error('WASM not initialized');
+          }
+
+          await wasm.restore_panel_layout(saved.layout);
+          await (window as any).refreshPanels?.();
+
+          (window as any).showToast?.('success', `Layout "${saved.name}" loaded`);
+          this.close();
+        } catch (err) {
+          console.error('Failed to load layout:', err);
+          (window as any).showToast?.('error', 'Failed to load layout');
+        }
+      },
+
+      exportLayout(layout: SavedLayout) {
+        try {
+          layoutStorage.exportLayout(layout);
+          (window as any).showToast?.('success', `Layout "${layout.name}" exported`);
+        } catch (err) {
+          console.error('Failed to export layout:', err);
+          (window as any).showToast?.('error', 'Failed to export layout');
+        }
+      },
+
+      async importLayout(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        if (!file) return;
+
+        try {
+          const layout = await layoutStorage.importLayout(file);
+          (window as any).showToast?.('success', `Layout "${layout.name}" imported`);
+          await this.refreshLayouts();
+
+          // Reset file input
+          input.value = '';
+        } catch (err) {
+          console.error('Failed to import layout:', err);
+          (window as any).showToast?.('error', 'Failed to import layout');
+        }
+      },
+
+      async deleteLayout(id: string) {
+        if (!confirm('Are you sure you want to delete this layout?')) {
+          return;
+        }
+
+        try {
+          await layoutStorage.deleteLayout(id);
+          (window as any).showToast?.('success', 'Layout deleted');
+          await this.refreshLayouts();
+        } catch (err) {
+          console.error('Failed to delete layout:', err);
+          (window as any).showToast?.('error', 'Failed to delete layout');
+        }
+      },
+
+      async clearAllLayouts() {
+        if (!confirm('Are you sure you want to delete ALL saved layouts? This cannot be undone.')) {
+          return;
+        }
+
+        try {
+          await layoutStorage.clearAll();
+          (window as any).showToast?.('success', 'All layouts cleared');
+          await this.refreshLayouts();
+        } catch (err) {
+          console.error('Failed to clear layouts:', err);
+          (window as any).showToast?.('error', 'Failed to clear layouts');
+        }
+      },
+
+      formatTimestamp(timestamp: number): string {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        if (minutes < 1) return 'Just now';
+        if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+
+        return date.toLocaleDateString();
+      },
+
+      getPanelCount(layout: SavedLayout): string {
+        try {
+          const parsed = JSON.parse(layout.layout);
+          const count = parsed.panels?.length || 0;
+          return count.toString();
+        } catch {
+          return '?';
+        }
+      },
+
+      needsMigration(layoutJson: string): boolean {
+        return needsMigration(layoutJson);
+      },
+
+      close() {
+        Alpine.store('layoutManagerOpen', false);
+      },
+    };
+  }
+
+  // Register Alpine component
+  if (typeof window !== 'undefined') {
+    Alpine.data('layoutManager', layoutManager);
+  }
+</script>
+
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>

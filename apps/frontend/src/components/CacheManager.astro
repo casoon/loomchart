@@ -1,0 +1,230 @@
+---
+// Cache Management Component - IndexedDB control panel
+---
+
+<div
+  x-show="showCacheManager"
+  @click.self="showCacheManager = false"
+  x-cloak
+  class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+>
+  <div class="bg-card border border-border rounded-lg shadow-lg w-full max-w-2xl mx-4">
+    <div class="flex items-center justify-between p-4 border-b border-border">
+      <h2 class="text-lg font-semibold text-foreground">Cache Management</h2>
+      <button @click="showCacheManager = false" class="text-muted-foreground hover:text-foreground">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="p-6 space-y-6">
+      <!-- Cache Stats -->
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-background rounded-lg p-4 border border-border">
+          <div class="text-sm text-muted-foreground">Total Entries</div>
+          <div id="cache-total-entries" class="text-2xl font-semibold text-foreground mt-1">0</div>
+        </div>
+        <div class="bg-background rounded-lg p-4 border border-border">
+          <div class="text-sm text-muted-foreground">Total Size</div>
+          <div id="cache-total-size" class="text-2xl font-semibold text-foreground mt-1">0 KB</div>
+        </div>
+        <div class="bg-background rounded-lg p-4 border border-border">
+          <div class="text-sm text-muted-foreground">Oldest Entry</div>
+          <div id="cache-oldest" class="text-sm text-foreground mt-1">-</div>
+        </div>
+        <div class="bg-background rounded-lg p-4 border border-border">
+          <div class="text-sm text-muted-foreground">Newest Entry</div>
+          <div id="cache-newest" class="text-sm text-foreground mt-1">-</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="space-y-3">
+        <button
+          id="clear-old-cache"
+          class="w-full px-4 py-2 bg-background hover:bg-accent border border-border rounded-md text-foreground transition-colors"
+        >
+          Clear Old Entries (>24h)
+        </button>
+
+        <button
+          id="clear-all-cache"
+          class="w-full px-4 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/50 rounded-md text-destructive transition-colors"
+        >
+          Clear All Cache
+        </button>
+      </div>
+
+      <!-- Saved Layouts -->
+      <div class="border-t border-border pt-6">
+        <h3 class="text-sm font-semibold text-foreground mb-3">Saved Layouts</h3>
+        <div id="saved-layouts" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+        <button
+          id="save-current-layout"
+          class="w-full mt-3 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md transition-colors"
+        >
+          Save Current Layout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { candleCacheDB } from '../lib/candle-cache-db';
+
+  if (typeof window !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Initialize DB on page load
+      await candleCacheDB.init().catch(console.error);
+
+  // Refresh stats
+  async function refreshStats() {
+    try {
+      const stats = await candleCacheDB.getCacheStats();
+
+      document.getElementById('cache-total-entries')!.textContent = stats.totalEntries.toString();
+      document.getElementById('cache-total-size')!.textContent = `${(stats.totalSize / 1024).toFixed(1)} KB`;
+
+      if (stats.totalEntries > 0) {
+        document.getElementById('cache-oldest')!.textContent = new Date(stats.oldestEntry).toLocaleString();
+        document.getElementById('cache-newest')!.textContent = new Date(stats.newestEntry).toLocaleString();
+      }
+    } catch (err) {
+      console.error('Failed to load cache stats:', err);
+    }
+  }
+
+  // Refresh layouts
+  async function refreshLayouts() {
+    try {
+      const layouts = await candleCacheDB.listLayouts();
+      const container = document.getElementById('saved-layouts');
+
+      if (!container) return;
+
+      if (layouts.length === 0) {
+        container.innerHTML = '<div class="text-sm text-muted-foreground italic">No saved layouts</div>';
+        return;
+      }
+
+      container.innerHTML = layouts.map(id => `
+        <div class="flex items-center justify-between bg-background border border-border rounded-md p-3">
+          <span class="text-sm text-foreground">${id}</span>
+          <div class="flex gap-2">
+            <button class="load-layout px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90" data-layout-id="${id}">
+              Load
+            </button>
+            <button class="delete-layout px-3 py-1 text-sm bg-destructive/10 text-destructive rounded hover:bg-destructive/20" data-layout-id="${id}">
+              Delete
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      // Attach listeners
+      container.querySelectorAll('.load-layout').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = (e.target as HTMLElement).dataset.layoutId;
+          if (id) await loadLayout(id);
+        });
+      });
+
+      container.querySelectorAll('.delete-layout').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = (e.target as HTMLElement).dataset.layoutId;
+          if (id && confirm(`Delete layout "${id}"?`)) {
+            await candleCacheDB.deleteLayout(id);
+            await refreshLayouts();
+          }
+        });
+      });
+    } catch (err) {
+      console.error('Failed to load layouts:', err);
+    }
+  }
+
+  // Clear old cache
+  document.getElementById('clear-old-cache')?.addEventListener('click', async () => {
+    if (confirm('Clear cache entries older than 24 hours?')) {
+      try {
+        await candleCacheDB.clearOldEntries(86400000); // 24h
+        await refreshStats();
+        alert('Old cache entries cleared');
+      } catch (err) {
+        console.error('Failed to clear old cache:', err);
+        alert('Failed to clear cache');
+      }
+    }
+  });
+
+  // Clear all cache
+  document.getElementById('clear-all-cache')?.addEventListener('click', async () => {
+    if (confirm('Clear ALL cache data? This cannot be undone.')) {
+      try {
+        await candleCacheDB.clearAll();
+        await refreshStats();
+        await refreshLayouts();
+        alert('All cache cleared');
+      } catch (err) {
+        console.error('Failed to clear cache:', err);
+        alert('Failed to clear cache');
+      }
+    }
+  });
+
+  // Save current layout
+  document.getElementById('save-current-layout')?.addEventListener('click', async () => {
+    const name = prompt('Enter layout name:');
+    if (!name) return;
+
+    try {
+      // Get current layout from WASM
+      const wasm = (window as any).getWasm?.();
+      if (!wasm) {
+        alert('WASM not initialized');
+        return;
+      }
+
+      const layoutJson = await wasm.get_panel_layout();
+      await candleCacheDB.saveLayout(name, JSON.parse(layoutJson));
+      await refreshLayouts();
+      alert(`Layout "${name}" saved`);
+    } catch (err) {
+      console.error('Failed to save layout:', err);
+      alert('Failed to save layout');
+    }
+  });
+
+  // Load layout
+  async function loadLayout(id: string) {
+    try {
+      const layout = await candleCacheDB.loadLayout(id);
+      if (!layout) {
+        alert('Layout not found');
+        return;
+      }
+
+      const wasm = (window as any).getWasm?.();
+      if (!wasm) {
+        alert('WASM not initialized');
+        return;
+      }
+
+      await wasm.restore_panel_layout(JSON.stringify(layout));
+      manager?.classList.add('hidden');
+      alert(`Layout "${id}" loaded`);
+
+      // Trigger panel re-render
+      (window as any).refreshPanels?.();
+    } catch (err) {
+      console.error('Failed to load layout:', err);
+      alert('Failed to load layout');
+    }
+  }
+    }); // End DOMContentLoaded
+  } // End if window
+</script>

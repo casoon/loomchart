@@ -1,0 +1,247 @@
+---
+// Panel Context Menu Component
+// Right-click menu for panel actions
+---
+
+<div
+  x-data="panelContextMenu()"
+  x-init="init()"
+  @click.away="hide()"
+  @contextmenu-panel.window="show($event.detail)"
+  x-show="visible"
+  x-transition:enter="transition ease-out duration-100"
+  x-transition:enter-start="opacity-0 scale-95"
+  x-transition:enter-end="opacity-100 scale-100"
+  x-transition:leave="transition ease-in duration-75"
+  x-transition:leave-start="opacity-100 scale-100"
+  x-transition:leave-end="opacity-0 scale-95"
+  class="context-menu"
+  :style="`left: ${x}px; top: ${y}px;`"
+  style="display: none;"
+  x-cloak
+>
+  <div class="context-menu-content">
+    <!-- Maximize/Restore -->
+    <button
+      @click="executeAction('maximize')"
+      class="context-menu-item"
+      x-show="!isMaximized"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+      </svg>
+      <span>Maximize</span>
+    </button>
+
+    <button
+      @click="executeAction('restore')"
+      class="context-menu-item"
+      x-show="isMaximized"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"></path>
+      </svg>
+      <span>Restore</span>
+    </button>
+
+    <!-- Minimize (collapse) -->
+    <button
+      @click="executeAction('minimize')"
+      class="context-menu-item"
+      x-show="!isMinimized"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+      </svg>
+      <span>Minimize</span>
+    </button>
+
+    <button
+      @click="executeAction('expand')"
+      class="context-menu-item"
+      x-show="isMinimized"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+      </svg>
+      <span>Expand</span>
+    </button>
+
+    <div class="context-menu-divider"></div>
+
+    <!-- Settings -->
+    <button @click="executeAction('settings')" class="context-menu-item">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+      </svg>
+      <span>Settings</span>
+    </button>
+
+    <!-- Duplicate -->
+    <button @click="executeAction('duplicate')" class="context-menu-item">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+      </svg>
+      <span>Duplicate</span>
+    </button>
+
+    <div class="context-menu-divider"></div>
+
+    <!-- Remove (disabled for main chart) -->
+    <button
+      @click="executeAction('remove')"
+      class="context-menu-item context-menu-item-danger"
+      :disabled="isMainChart"
+      :class="{ 'opacity-50 cursor-not-allowed': isMainChart }"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+      </svg>
+      <span>Remove</span>
+    </button>
+  </div>
+</div>
+
+<style>
+  .context-menu {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: auto;
+  }
+
+  .context-menu-content {
+    min-width: 200px;
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    padding: 4px;
+    overflow: hidden;
+  }
+
+  .context-menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: hsl(var(--popover-foreground));
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    text-align: left;
+  }
+
+  .context-menu-item:hover:not(:disabled) {
+    background: hsl(var(--accent));
+  }
+
+  .context-menu-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .context-menu-item-danger:hover:not(:disabled) {
+    background: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    background: hsl(var(--border));
+    margin: 4px 0;
+  }
+
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+
+<script>
+  import Alpine from 'alpinejs';
+
+  function panelContextMenu() {
+    return {
+      visible: false,
+      x: 0,
+      y: 0,
+      panelId: null,
+      panelType: null,
+      isMaximized: false,
+      isMinimized: false,
+      isMainChart: false,
+
+      init() {
+        // Initialize
+      },
+
+      show(detail: {
+        x: number;
+        y: number;
+        panelId: string;
+        panelType: string;
+        isMaximized: boolean;
+        isMinimized: boolean;
+      }) {
+        this.panelId = detail.panelId;
+        this.panelType = detail.panelType;
+        this.isMaximized = detail.isMaximized || false;
+        this.isMinimized = detail.isMinimized || false;
+        this.isMainChart = detail.panelType === 'Chart';
+
+        // Position menu at cursor
+        this.x = detail.x;
+        this.y = detail.y;
+
+        // Ensure menu doesn't overflow viewport
+        this.$nextTick(() => {
+          const menu = this.$el as HTMLElement;
+          const rect = menu.getBoundingClientRect();
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+
+          if (this.x + rect.width > viewportWidth) {
+            this.x = viewportWidth - rect.width - 10;
+          }
+
+          if (this.y + rect.height > viewportHeight) {
+            this.y = viewportHeight - rect.height - 10;
+          }
+        });
+
+        this.visible = true;
+      },
+
+      hide() {
+        this.visible = false;
+        this.panelId = null;
+        this.panelType = null;
+      },
+
+      async executeAction(action: string) {
+        if (!this.panelId) return;
+
+        // Dispatch action event
+        window.dispatchEvent(
+          new CustomEvent('panel-action', {
+            detail: {
+              action,
+              panelId: this.panelId,
+              panelType: this.panelType,
+            },
+          })
+        );
+
+        this.hide();
+      },
+    };
+  }
+
+  // Register Alpine component
+  if (typeof window !== 'undefined') {
+    Alpine.data('panelContextMenu', panelContextMenu);
+  }
+</script>

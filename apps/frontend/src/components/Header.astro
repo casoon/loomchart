@@ -1,0 +1,81 @@
+---
+// Modern Header component
+---
+
+<header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background px-4 lg:h-16 lg:px-6">
+  <div class="flex items-center gap-4">
+    <!-- Market Stats -->
+    <div class="hidden items-center gap-2 2xl:flex">
+      <div class="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
+        <div class="font-medium text-sm" x-text="selectedSymbol || 'BTC/USD'"></div>
+        <div class="text-sm text-muted-foreground" x-text="lastCandle?.c?.toFixed(2) || '-'"></div>
+        <div
+          class="text-xs"
+          :class="lastCandle?.c >= lastCandle?.o ? 'text-emerald-500' : 'text-rose-500'"
+        >
+          <span x-text="lastCandle ? ((lastCandle.c - lastCandle.o) / lastCandle.o * 100).toFixed(2) + '%' : '-'"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <!-- Connection Status -->
+    <div class="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 shadow-sm">
+      <div class="relative">
+        <span
+          class="w-2 h-2 rounded-full block"
+          :class="{
+            'bg-emerald-500': connectionStatus === 'connected' || connectionStatus === 'streaming',
+            'bg-yellow-500 animate-pulse': connectionStatus === 'connecting' || connectionStatus === 'syncing' || connectionStatus === 'initializing',
+            'bg-orange-500 animate-ping': connectionStatus === 'reconnecting',
+            'bg-rose-500': connectionStatus === 'disconnected' || connectionStatus === 'error'
+          }"
+        ></span>
+      </div>
+      <span
+        class="text-xs font-medium"
+        :class="{
+          'text-emerald-500': connectionStatus === 'connected' || connectionStatus === 'streaming',
+          'text-yellow-500': connectionStatus === 'connecting' || connectionStatus === 'syncing' || connectionStatus === 'initializing',
+          'text-orange-500': connectionStatus === 'reconnecting',
+          'text-rose-500': connectionStatus === 'disconnected' || connectionStatus === 'error'
+        }"
+        x-text="connectionStatus"
+      ></span>
+    </div>
+
+    <!-- Refresh Button -->
+    <button
+      @click="refresh()"
+      class="inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10"
+      title="Refresh"
+    >
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    </button>
+  </div>
+</header>
+
+<style>
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  .animate-ping {
+    animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+</style>

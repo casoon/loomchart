@@ -1,0 +1,26 @@
+[package]
+name = "loom-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+loom-core = { path = "../packages/core" }
+loom-indicators = { path = "../packages/indicators", features = ["full"] }
+loom-signals = { path = "../packages/signals" }
+loom-risk = { path = "../packages/risk" }
+loom-chart = { path = "../packages/chart" }
+loom-data = { path = "../packages/data", features = ["csv"] }
+loom-backtest = { path = "../packages/backtest" }
+
+[[example]]
+name = "simple_indicators"
+path = "simple_indicators.rs"
+
+[[example]]
+name = "backtest_sma"
+path = "backtest_sma.rs"
+
+[[example]]
+name = "custom_plugin"
+path = "custom_plugin.rs"

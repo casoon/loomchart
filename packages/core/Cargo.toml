@@ -1,0 +1,22 @@
+[package]
+name = "loom-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core types for trading: Timeframes, Events, Symbols, and Market Data"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/casoon/loom"
+keywords = ["trading", "finance", "market-data", "timeframe"]
+categories = ["finance", "data-structures"]
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde"]
+chrono = ["dep:chrono"]
+
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
+chrono = { version = "0.4", default-features = false, optional = true }
+
+[dev-dependencies]
+serde_json = "1.0"

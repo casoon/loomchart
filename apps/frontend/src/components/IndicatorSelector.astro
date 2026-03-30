@@ -1,0 +1,471 @@
+---
+/**
+ * Indicator Selector Component
+ * Clean list of all indicators grouped by category
+ */
+import { getAllIndicators, getIndicatorMetadata } from '../lib/indicators/registry';
+import { addIndicatorToChart, removeIndicatorFromChart } from '../lib/indicators/chart-integration';
+---
+
+<div id="indicator-selector" class="indicator-selector hidden">
+  <div class="selector-header">
+    <h3>Indicators</h3>
+    <button id="close-selector" class="close-btn" title="Close">×</button>
+  </div>
+
+  <div id="indicator-categories" class="indicator-categories">
+    <!-- Categories will be populated dynamically from WASM metadata -->
+  </div>
+</div>
+
+<style>
+  .indicator-selector {
+    position: fixed;
+    right: 20px;
+    top: 120px;
+    width: 320px;
+    background: rgba(17, 24, 39, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 0;
+    z-index: 2000;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .indicator-selector.hidden {
+    display: none;
+  }
+
+  .selector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .selector-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 0;
+    font-size: 24px;
+    line-height: 1;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+  }
+
+  .close-btn:hover {
+    color: #fff;
+  }
+
+  .indicator-categories {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .category {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .category:last-child {
+    border-bottom: none;
+  }
+
+  .category-header {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    padding: 10px 16px;
+    text-align: left;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .category-header:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .category-header.expanded {
+    background: rgba(59, 130, 246, 0.1);
+    color: #60a5fa;
+  }
+
+  .category-toggle {
+    font-size: 10px;
+    transition: transform 0.2s;
+  }
+
+  .category-header.expanded .category-toggle {
+    transform: rotate(90deg);
+  }
+
+  .category-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+  }
+
+  .category-content.expanded {
+    max-height: 2000px;
+  }
+
+  .indicator-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 8px 32px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+  }
+
+  .indicator-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .indicator-item.active {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: #22c55e;
+  }
+
+  .indicator-name {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 400;
+  }
+
+  .indicator-item.active .indicator-name {
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .indicator-action {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .indicator-action:hover {
+    background: rgba(59, 130, 246, 0.3);
+    transform: scale(1.1);
+  }
+
+  .indicator-item.active .indicator-action {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .indicator-item.active .indicator-action::before {
+    content: '✓';
+  }
+
+  .indicator-item:not(.active) .indicator-action::before {
+    content: '+';
+  }
+
+  /* Scrollbar styling */
+  .indicator-categories::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .indicator-categories::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  .indicator-categories::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  .indicator-categories::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+</style>
+
+<script>
+  console.log('[IndicatorSelector] Script loaded');
+
+  // Use readystatechange to handle both cases: document already loaded or still loading
+  async function initIndicatorSelector() {
+    console.log('[IndicatorSelector] initIndicatorSelector called, readyState:', document.readyState);
+
+    const selector = document.getElementById('indicator-selector');
+    const closeBtn = document.getElementById('close-selector');
+    const categoriesContainer = document.getElementById('indicator-categories');
+
+    console.log('[IndicatorSelector] Elements:', {
+      selector: !!selector,
+      closeBtn: !!closeBtn,
+      categoriesContainer: !!categoriesContainer,
+    });
+
+    if (!categoriesContainer) {
+      console.error('[IndicatorSelector] Categories container not found!');
+      return;
+    }
+
+    console.log('[IndicatorSelector] Waiting for WASM...');
+    await waitForWasm();
+    console.log('[IndicatorSelector] WASM ready');
+
+    console.log('[IndicatorSelector] Loading indicators...');
+    await loadIndicators(categoriesContainer);
+    console.log('[IndicatorSelector] Indicators loaded');
+
+    // Show/hide selector
+    window.addEventListener('show-indicator-selector', () => {
+      console.log('[IndicatorSelector] show-indicator-selector event received');
+      selector?.classList.remove('hidden');
+    });
+
+    closeBtn?.addEventListener('click', () => {
+      selector?.classList.add('hidden');
+    });
+
+    // Close on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !selector?.classList.contains('hidden')) {
+        selector.classList.add('hidden');
+      }
+    });
+  }
+
+  // Call init when DOM is ready
+  if (document.readyState === 'loading') {
+    console.log('[IndicatorSelector] Waiting for DOMContentLoaded...');
+    document.addEventListener('DOMContentLoaded', initIndicatorSelector);
+  } else {
+    console.log('[IndicatorSelector] Document already loaded, calling init immediately');
+    initIndicatorSelector();
+  }
+
+  // Track active indicators
+  const activeIndicators = new Set();
+
+  // Wait for RustChart to be available
+  async function waitForWasm() {
+    return new Promise((resolve) => {
+      // Check if rustChart is already available
+      const rustChart = (window as any).rustChart;
+      if (rustChart?.wasmChart) {
+        console.log('[IndicatorSelector] RustChart already available');
+        resolve(rustChart.wasmChart);
+        return;
+      }
+
+      console.log('[IndicatorSelector] Waiting for rustChartReady event...');
+
+      // Listen for rustChartReady event
+      const handleReady = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.rustChart?.wasmChart) {
+          console.log('[IndicatorSelector] RustChart ready via event');
+          window.removeEventListener('rustChartReady', handleReady);
+          resolve(detail.rustChart.wasmChart);
+        }
+      };
+
+      window.addEventListener('rustChartReady', handleReady);
+
+      // Fallback: poll in case event was already dispatched
+      const checkInterval = setInterval(() => {
+        const rustChart = (window as any).rustChart;
+        if (rustChart?.wasmChart) {
+          console.log('[IndicatorSelector] RustChart found via polling');
+          clearInterval(checkInterval);
+          window.removeEventListener('rustChartReady', handleReady);
+          resolve(rustChart.wasmChart);
+        }
+      }, 100);
+    });
+  }
+
+  // Load all indicators from WASM and populate UI
+  async function loadIndicators(container) {
+    try {
+      // Import the WASM module to access module-level functions
+      const wasmModule = await import('../../public/wasm/trading_ui.js');
+
+      // getAllIndicators is a module-level function, not a WasmChart method
+      if (typeof wasmModule.get_all_indicators !== 'function') {
+        console.error('[IndicatorSelector] get_all_indicators not found in WASM module');
+        return;
+      }
+
+      console.log('[IndicatorSelector] Calling get_all_indicators from WASM module');
+
+      // Get all indicators from WASM
+      const metadataJson = wasmModule.get_all_indicators();
+      const allIndicators = JSON.parse(metadataJson);
+
+      console.log('[IndicatorSelector] Loaded', allIndicators.length, 'indicators');
+
+      // Group by category
+      const byCategory = {};
+      allIndicators.forEach((indicator) => {
+        const category = indicator.category || 'Other';
+        if (!byCategory[category]) {
+          byCategory[category] = [];
+        }
+        byCategory[category].push(indicator);
+      });
+
+      // Sort categories and indicators alphabetically
+      const sortedCategories = Object.keys(byCategory).sort();
+
+      // Create category sections
+      sortedCategories.forEach((category) => {
+        const categoryDiv = document.createElement('div');
+        categoryDiv.className = 'category';
+
+        // Category header (collapsible)
+        const header = document.createElement('button');
+        header.className = 'category-header';
+        header.innerHTML = `
+          <span>${category}</span>
+          <span class="category-toggle">▶</span>
+        `;
+
+        // Category content
+        const content = document.createElement('div');
+        content.className = 'category-content';
+
+        // Sort indicators alphabetically
+        const indicators = byCategory[category].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+
+        // Create indicator items
+        indicators.forEach((indicator) => {
+          const item = document.createElement('div');
+          item.className = 'indicator-item';
+          item.dataset.indicatorId = indicator.id;
+
+          item.innerHTML = `
+            <span class="indicator-name">${indicator.name}</span>
+            <div class="indicator-action"></div>
+          `;
+
+          // Click to add/remove
+          item.addEventListener('click', async () => {
+            const isActive = activeIndicators.has(indicator.id);
+
+            if (isActive) {
+              // Remove indicator
+              activeIndicators.delete(indicator.id);
+              item.classList.remove('active');
+              // TODO: Call remove function
+            } else {
+              // Add indicator
+              const config = {
+                id: indicator.id,
+                parameters: getDefaultParameters(indicator)
+              };
+
+              const instance = await addIndicatorToChart(config);
+              if (instance) {
+                activeIndicators.add(indicator.id);
+                item.classList.add('active');
+              }
+            }
+          });
+
+          content.appendChild(item);
+        });
+
+        // Toggle category
+        header.addEventListener('click', () => {
+          header.classList.toggle('expanded');
+          content.classList.toggle('expanded');
+        });
+
+        categoryDiv.appendChild(header);
+        categoryDiv.appendChild(content);
+        container.appendChild(categoryDiv);
+      });
+
+      console.log('[IndicatorSelector] Created', sortedCategories.length, 'categories');
+
+    } catch (error) {
+      console.error('Failed to load indicators:', error);
+      container.innerHTML = '<div style="padding: 20px; color: #ef4444;">Failed to load indicators</div>';
+    }
+  }
+
+  // Helper to get default parameters
+  function getDefaultParameters(indicator) {
+    const params = {};
+
+    if (!indicator.parameters) return params;
+
+    indicator.parameters.forEach((param) => {
+      const type = param.param_type;
+      if (type.Integer) {
+        params[param.id] = type.Integer.default;
+      } else if (type.Float) {
+        params[param.id] = type.Float.default;
+      } else if (type.Boolean) {
+        params[param.id] = type.Boolean.default;
+      }
+    });
+
+    return params;
+  }
+
+  // Listen for indicator events
+  window.addEventListener('indicator-added', (e) => {
+    const indicatorId = e.detail?.instance?.metadata?.id;
+    if (indicatorId) {
+      activeIndicators.add(indicatorId);
+      const item = document.querySelector(`[data-indicator-id="${indicatorId}"]`);
+      item?.classList.add('active');
+    }
+  });
+
+  window.addEventListener('indicator-removed', (e) => {
+    const indicatorId = e.detail?.instanceId;
+    if (indicatorId) {
+      activeIndicators.delete(indicatorId);
+      const item = document.querySelector(`[data-indicator-id="${indicatorId}"]`);
+      item?.classList.remove('active');
+    }
+  });
+</script>

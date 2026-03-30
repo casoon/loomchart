@@ -1,0 +1,44 @@
+---
+// Chart container component
+import ConnectionOverlay from './ConnectionOverlay.astro';
+---
+
+<div class="flex-1 flex flex-col bg-surface relative">
+  <!-- Connection Status Overlay -->
+  <ConnectionOverlay />
+
+  <!-- Main Chart -->
+  <div id="main-chart" style="height: 600px;"></div>
+
+  <!-- RSI Subchart (conditional) -->
+  <div
+    x-show="indicators.rsi.enabled"
+    x-transition
+    id="rsi-chart"
+    class="h-24 border-t border-default"
+  ></div>
+
+  <!-- MACD Subchart (conditional) -->
+  <div
+    x-show="indicators.macd.enabled"
+    x-transition
+    id="macd-chart"
+    class="h-24 border-t border-default"
+  ></div>
+</div>
+
+<style>
+  #main-chart,
+  #rsi-chart,
+  #macd-chart {
+    width: 100%;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+</style>

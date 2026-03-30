@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database (local development)
+  postgres:
+    image: postgres:16-alpine
+    container_name: loom-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: loom_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Phoenix Backend
+  phoenix:
+    build:
+      context: ./apps/phoenix
+      dockerfile: Dockerfile.dev
+    container_name: loom-phoenix
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@postgres:5432/loom_dev
+      SECRET_KEY_BASE: dev_secret_key_base_that_should_be_at_least_64_bytes_long_for_security
+      PHX_HOST: localhost
+      PORT: 4000
+      MIX_ENV: dev
+    volumes:
+      - ./apps/phoenix:/app
+      - phoenix_deps:/app/deps
+      - phoenix_build:/app/_build
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["mix", "phx.server"]
+
+volumes:
+  postgres_data:
+  phoenix_deps:
+  phoenix_build:

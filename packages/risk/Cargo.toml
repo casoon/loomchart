@@ -1,0 +1,20 @@
+[package]
+name = "loom-risk"
+version = "0.1.0"
+edition = "2021"
+description = "Risk management: position sizing, kill switch, drawdown limits"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/casoon/loom"
+keywords = ["trading", "risk-management", "position-sizing"]
+categories = ["finance", "algorithms"]
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
+loom-core = { path = "../core", default-features = false }
+
+[dev-dependencies]

@@ -1,0 +1,481 @@
+---
+// RegimeIndicator.astro
+// Displays the current market regime based on entropy triangle analysis
+---
+
+<div id="regime-indicator" class="regime-indicator hidden">
+  <div class="regime-header">
+    <span class="regime-label">Market Regime</span>
+    <button id="regime-toggle" class="regime-toggle" title="Toggle details">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+        <path d="M6 9L1 4h10z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="regime-content">
+    <div class="regime-status">
+      <div id="regime-badge" class="regime-badge">
+        <span id="regime-name">Unknown</span>
+      </div>
+      <div id="regime-confidence" class="regime-confidence">
+        <span class="confidence-label">Confidence:</span>
+        <span id="confidence-value">--</span>
+      </div>
+    </div>
+
+    <div id="regime-details" class="regime-details collapsed">
+      <div class="regime-description">
+        <p id="regime-description-text">No regime data available.</p>
+      </div>
+
+      <div class="regime-recommendations">
+        <h4>Recommendations</h4>
+        <ul id="regime-recommendations-list">
+          <li>Enable entropy indicators to see recommendations</li>
+        </ul>
+      </div>
+
+      <div class="regime-metrics">
+        <div class="metric">
+          <span class="metric-label">Shannon:</span>
+          <span id="metric-shannon" class="metric-value">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Lempel-Ziv:</span>
+          <span id="metric-lempel-ziv" class="metric-value">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Permutation:</span>
+          <span id="metric-permutation" class="metric-value">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .regime-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 12px;
+    min-width: 280px;
+    max-width: 320px;
+    z-index: 1000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s ease;
+  }
+
+  .regime-indicator.hidden {
+    display: none;
+  }
+
+  .regime-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .regime-label {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .regime-toggle {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .regime-toggle:hover {
+    color: rgba(255, 255, 255, 1);
+    transform: scale(1.1);
+  }
+
+  .regime-toggle svg {
+    transition: transform 0.3s ease;
+  }
+
+  .regime-toggle.expanded svg {
+    transform: rotate(180deg);
+  }
+
+  .regime-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .regime-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .regime-badge {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+
+  /* Regime-specific colors */
+  .regime-badge.highly-structured {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: #22c55e;
+    color: #22c55e;
+  }
+
+  .regime-badge.trending {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: #3b82f6;
+    color: #3b82f6;
+  }
+
+  .regime-badge.ranging {
+    background: rgba(234, 179, 8, 0.2);
+    border-color: #eab308;
+    color: #eab308;
+  }
+
+  .regime-badge.random {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+
+  .regime-badge.transitioning {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+  }
+
+  .regime-badge.unknown {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: #94a3b8;
+    color: #94a3b8;
+  }
+
+  .regime-confidence {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  .confidence-label {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  #confidence-value {
+    color: #fff;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+  }
+
+  .regime-details {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .regime-details.expanded {
+    max-height: 500px;
+  }
+
+  .regime-description {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+
+  .regime-description p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .regime-recommendations {
+    margin-bottom: 12px;
+  }
+
+  .regime-recommendations h4 {
+    margin: 0 0 8px 0;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .regime-recommendations ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style: none;
+  }
+
+  .regime-recommendations li {
+    position: relative;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .regime-recommendations li::before {
+    content: '→';
+    position: absolute;
+    left: -16px;
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .regime-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+  }
+
+  .metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .metric-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+  }
+
+  .metric-value {
+    color: #fff;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  import { classifyRegime, type RegimeAnalysis, type MarketRegime } from '../lib/indicators/regime-analysis';
+
+  interface EntropyValues {
+    shannon: number | null;
+    lempelZiv: number | null;
+    permutation: number | null;
+  }
+
+  class RegimeIndicatorController {
+    private indicator: HTMLElement;
+    private toggleButton: HTMLElement;
+    private detailsPanel: HTMLElement;
+    private regimeBadge: HTMLElement;
+    private regimeName: HTMLElement;
+    private confidenceValue: HTMLElement;
+    private descriptionText: HTMLElement;
+    private recommendationsList: HTMLElement;
+    private metricShannon: HTMLElement;
+    private metricLempelZiv: HTMLElement;
+    private metricPermutation: HTMLElement;
+
+    private currentRegime: RegimeAnalysis | null = null;
+    private isExpanded: boolean = false;
+
+    constructor() {
+      this.indicator = document.getElementById('regime-indicator')!;
+      this.toggleButton = document.getElementById('regime-toggle')!;
+      this.detailsPanel = document.getElementById('regime-details')!;
+      this.regimeBadge = document.getElementById('regime-badge')!;
+      this.regimeName = document.getElementById('regime-name')!;
+      this.confidenceValue = document.getElementById('confidence-value')!;
+      this.descriptionText = document.getElementById('regime-description-text')!;
+      this.recommendationsList = document.getElementById('regime-recommendations-list')!;
+      this.metricShannon = document.getElementById('metric-shannon')!;
+      this.metricLempelZiv = document.getElementById('metric-lempel-ziv')!;
+      this.metricPermutation = document.getElementById('metric-permutation')!;
+
+      this.setupEventListeners();
+    }
+
+    private setupEventListeners(): void {
+      // Toggle details panel
+      this.toggleButton.addEventListener('click', () => {
+        this.toggleDetails();
+      });
+
+      // Listen for indicator updates
+      window.addEventListener('indicator-updated', (() => {
+        this.updateRegime();
+      }) as EventListener);
+
+      // Listen for candle updates
+      window.addEventListener('candle-added', (() => {
+        this.updateRegime();
+      }) as EventListener);
+    }
+
+    private toggleDetails(): void {
+      this.isExpanded = !this.isExpanded;
+
+      if (this.isExpanded) {
+        this.detailsPanel.classList.remove('collapsed');
+        this.detailsPanel.classList.add('expanded');
+        this.toggleButton.classList.add('expanded');
+      } else {
+        this.detailsPanel.classList.remove('expanded');
+        this.detailsPanel.classList.add('collapsed');
+        this.toggleButton.classList.remove('expanded');
+      }
+    }
+
+    private updateRegime(): void {
+      // Get current entropy values from the overlay controller
+      const entropyOverlay = (window as any).entropyOverlay;
+      if (!entropyOverlay) return;
+
+      const values: EntropyValues = entropyOverlay.getValues();
+
+      // Update metric display
+      this.metricShannon.textContent = values.shannon !== null ? values.shannon.toFixed(4) : '--';
+      this.metricLempelZiv.textContent = values.lempelZiv !== null ? values.lempelZiv.toFixed(4) : '--';
+      this.metricPermutation.textContent = values.permutation !== null ? values.permutation.toFixed(4) : '--';
+
+      // Check if we have enough data
+      const hasData = values.shannon !== null || values.lempelZiv !== null || values.permutation !== null;
+
+      if (!hasData) {
+        this.hide();
+        return;
+      }
+
+      // Classify regime
+      this.currentRegime = classifyRegime(
+        values.shannon,
+        values.lempelZiv,
+        values.permutation
+      );
+
+      this.render();
+      this.show();
+    }
+
+    private render(): void {
+      if (!this.currentRegime) return;
+
+      // Update regime name
+      this.regimeName.textContent = this.formatRegimeName(this.currentRegime.regime);
+
+      // Update badge styling
+      this.regimeBadge.className = 'regime-badge';
+      this.regimeBadge.classList.add(this.getRegimeClass(this.currentRegime.regime));
+
+      // Update confidence
+      const confidencePercent = (this.currentRegime.confidence * 100).toFixed(0);
+      this.confidenceValue.textContent = `${confidencePercent}%`;
+
+      // Update description
+      this.descriptionText.textContent = this.currentRegime.description;
+
+      // Update recommendations
+      this.recommendationsList.innerHTML = '';
+      this.currentRegime.recommendations.forEach(rec => {
+        const li = document.createElement('li');
+        li.textContent = rec;
+        this.recommendationsList.appendChild(li);
+      });
+    }
+
+    private formatRegimeName(regime: MarketRegime): string {
+      switch (regime) {
+        case 'HighlyStructured':
+          return 'Highly Structured';
+        case 'Trending':
+          return 'Trending';
+        case 'Ranging':
+          return 'Ranging';
+        case 'Random':
+          return 'Random';
+        case 'Transitioning':
+          return 'Transitioning';
+        default:
+          return 'Unknown';
+      }
+    }
+
+    private getRegimeClass(regime: MarketRegime): string {
+      switch (regime) {
+        case 'HighlyStructured':
+          return 'highly-structured';
+        case 'Trending':
+          return 'trending';
+        case 'Ranging':
+          return 'ranging';
+        case 'Random':
+          return 'random';
+        case 'Transitioning':
+          return 'transitioning';
+        default:
+          return 'unknown';
+      }
+    }
+
+    public show(): void {
+      this.indicator.classList.remove('hidden');
+    }
+
+    public hide(): void {
+      this.indicator.classList.add('hidden');
+    }
+
+    public updatePosition(x: number, y: number): void {
+      this.indicator.style.right = `${x}px`;
+      this.indicator.style.top = `${y}px`;
+    }
+
+    public getRegime(): RegimeAnalysis | null {
+      return this.currentRegime;
+    }
+  }
+
+  // Initialize the regime indicator controller
+  let regimeController: RegimeIndicatorController;
+
+  // Wait for DOM to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      regimeController = new RegimeIndicatorController();
+      (window as any).regimeIndicator = regimeController;
+    });
+  } else {
+    regimeController = new RegimeIndicatorController();
+    (window as any).regimeIndicator = regimeController;
+  }
+
+  // Export for use in other modules
+  export { RegimeIndicatorController };
+</script>

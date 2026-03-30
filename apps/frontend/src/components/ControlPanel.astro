@@ -1,0 +1,293 @@
+---
+// Control Panel - Clean and organized
+---
+
+<div class="flex flex-col h-full">
+
+  <!-- Market & Symbol Selection -->
+  <div class="pb-3 border-b border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Market</h3>
+    <div class="space-y-2">
+      <select
+        x-model="selectedSource"
+        class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+      >
+        <option value="binance">Binance</option>
+        <option value="coinbase">Coinbase</option>
+        <option value="kraken">Kraken</option>
+      </select>
+
+      <select
+        x-model="selectedSymbol"
+        @change="onSymbolChange()"
+        class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+      >
+        <template x-for="symbol in symbols" :key="symbol">
+          <option :value="symbol" x-text="symbol"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+
+  <!-- Timeframe -->
+  <div class="py-3 border-b border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Timeframe</h3>
+    <div class="grid grid-cols-4 gap-1">
+      <template x-for="tf in timeframes" :key="tf">
+        <button
+          @click="setTimeframe(tf)"
+          :class="{
+            'bg-blue-600 text-white': selectedTimeframe === tf,
+            'bg-[#1a1f26] text-gray-400 hover:bg-[#252a31]': selectedTimeframe !== tf
+          }"
+          class="px-2 py-1 text-xs rounded transition font-medium"
+          x-text="tf"
+        ></button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Candle Style -->
+  <div class="py-3 border-b border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Candle Style</h3>
+    <div class="grid grid-cols-3 gap-1">
+      <button
+        @click="setCandleStyle('candlestick')"
+        :class="{
+          'bg-blue-600 text-white': candleStyle === 'candlestick',
+          'bg-[#1a1f26] text-gray-400 hover:bg-[#252a31]': candleStyle !== 'candlestick'
+        }"
+        class="px-2 py-1 text-xs rounded transition font-medium"
+      >
+        Candles
+      </button>
+      <button
+        @click="setCandleStyle('ohlc')"
+        :class="{
+          'bg-blue-600 text-white': candleStyle === 'ohlc',
+          'bg-[#1a1f26] text-gray-400 hover:bg-[#252a31]': candleStyle !== 'ohlc'
+        }"
+        class="px-2 py-1 text-xs rounded transition font-medium"
+      >
+        OHLC
+      </button>
+      <button
+        @click="setCandleStyle('hollow')"
+        :class="{
+          'bg-blue-600 text-white': candleStyle === 'hollow',
+          'bg-[#1a1f26] text-gray-400 hover:bg-[#252a31]': candleStyle !== 'hollow'
+        }"
+        class="px-2 py-1 text-xs rounded transition font-medium"
+      >
+        Hollow
+      </button>
+    </div>
+  </div>
+
+  <!-- Indicators -->
+  <div class="py-3 border-b border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Indicators</h3>
+    <div class="space-y-2">
+      <!-- EMA -->
+      <div class="bg-[#1a1f26] rounded p-2">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              x-model="indicators.ema.enabled"
+              @change="toggleIndicator('ema')"
+              class="w-3 h-3 rounded border-gray-600 bg-[#0f1419] text-blue-600 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            />
+            <span class="text-xs font-medium text-gray-300">EMA</span>
+          </label>
+          <select
+            x-model="indicators.ema.period"
+            @change="updateIndicator('ema')"
+            class="bg-[#0f1419] border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+            :disabled="!indicators.ema.enabled"
+          >
+            <option value="9">9</option>
+            <option value="21">21</option>
+            <option value="50">50</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- RSI -->
+      <div class="bg-[#1a1f26] rounded p-2">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              x-model="indicators.rsi.enabled"
+              @change="toggleIndicator('rsi')"
+              class="w-3 h-3 rounded border-gray-600 bg-[#0f1419] text-blue-600 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            />
+            <span class="text-xs font-medium text-gray-300">RSI</span>
+          </label>
+          <select
+            x-model="indicators.rsi.period"
+            @change="updateIndicator('rsi')"
+            class="bg-[#0f1419] border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+            :disabled="!indicators.rsi.enabled"
+          >
+            <option value="7">7</option>
+            <option value="14">14</option>
+            <option value="21">21</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- MACD -->
+      <div class="bg-[#1a1f26] rounded p-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            x-model="indicators.macd.enabled"
+            @change="toggleIndicator('macd')"
+            class="w-3 h-3 rounded border-gray-600 bg-[#0f1419] text-blue-600 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          />
+          <span class="text-xs font-medium text-gray-300">MACD</span>
+          <span class="text-[10px] text-gray-600">(12,26,9)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Test Data Generator -->
+  <div class="py-3 border-b border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Test Data Generator</h3>
+    <div class="space-y-2">
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Market</label>
+          <select
+            x-model="testData.market"
+            class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+          >
+            <option value="crypto">Crypto</option>
+            <option value="stock">Stock</option>
+            <option value="forex">Forex</option>
+            <option value="futures">Futures</option>
+            <option value="commodities">Commodities</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Candles</label>
+          <input
+            type="number"
+            x-model.number="testData.count"
+            min="10"
+            max="2000"
+            step="50"
+            class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Trend</label>
+          <select
+            x-model="testData.trend"
+            class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+          >
+            <option value="bullish_strong">Strong Bull</option>
+            <option value="bullish_mild">Mild Bull</option>
+            <option value="sideways">Sideways</option>
+            <option value="bearish_mild">Mild Bear</option>
+            <option value="bearish_strong">Strong Bear</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Volatility</label>
+          <select
+            x-model="testData.volatility"
+            class="w-full bg-[#1a1f26] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+          >
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="extreme">Extreme</option>
+          </select>
+        </div>
+      </div>
+
+      <button
+        @click="loadTestData()"
+        :disabled="loading"
+        class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs font-medium py-1.5 rounded transition"
+      >
+        <span x-show="!loading">Generate Test Data</span>
+        <span x-show="loading">Generating...</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Live Data -->
+  <div class="py-3">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Live Data</h3>
+      <div class="flex items-center gap-1.5">
+        <div
+          class="w-1.5 h-1.5 rounded-full"
+          :class="{
+            'bg-green-500': connectionStatus === 'connected',
+            'bg-yellow-500 animate-pulse': connectionStatus === 'connecting' || connectionStatus === 'syncing',
+            'bg-red-500': connectionStatus === 'error' || connectionStatus === 'disconnected'
+          }"
+        ></div>
+        <span class="text-[10px] text-gray-500" x-text="connectionStatus"></span>
+      </div>
+    </div>
+
+    <div class="space-y-1.5">
+      <button
+        @click="fetchCandles()"
+        :disabled="loading"
+        class="w-full bg-[#1a1f26] hover:bg-[#252a31] disabled:bg-[#1a1f26] disabled:text-gray-600 text-gray-300 text-xs font-medium py-1.5 rounded transition border border-gray-700"
+      >
+        <span x-show="!loading">Fetch Candles</span>
+        <span x-show="loading">Loading...</span>
+      </button>
+
+      <div class="text-[10px] text-gray-500 text-center">
+        <span x-text="candleCount || 0"></span> candles loaded
+      </div>
+    </div>
+  </div>
+
+  <!-- Current Candle Info -->
+  <div x-show="lastCandle" class="mt-auto pt-3 border-t border-gray-800">
+    <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">Current Candle</h3>
+    <div class="bg-[#1a1f26] rounded p-2 space-y-1 text-xs font-mono">
+      <div class="flex justify-between">
+        <span class="text-gray-500">O</span>
+        <span class="text-gray-300" x-text="lastCandle?.o?.toFixed(2)"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-500">H</span>
+        <span class="text-green-400" x-text="lastCandle?.h?.toFixed(2)"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-500">L</span>
+        <span class="text-red-400" x-text="lastCandle?.l?.toFixed(2)"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-500">C</span>
+        <span
+          :class="lastCandle?.c >= lastCandle?.o ? 'text-green-400' : 'text-red-400'"
+          x-text="lastCandle?.c?.toFixed(2)"
+        ></span>
+      </div>
+      <div class="flex justify-between pt-1 border-t border-gray-800">
+        <span class="text-gray-500">Vol</span>
+        <span class="text-gray-400" x-text="lastCandle?.v?.toFixed(0)"></span>
+      </div>
+    </div>
+  </div>
+
+</div>

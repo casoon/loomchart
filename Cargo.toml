@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "packages/core",
+    "packages/indicators",
+    "packages/signals",
+    "packages/risk",
+    "packages/chart",
+    "packages/data",
+    "packages/backtest",
+    "tests",
+    "examples",
+    "apps/capital-feed",
+    "crates/chartcore",
+]
+
+# WASM packages have different build requirements
+exclude = [
+    "packages/wasm-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/casoon/loom"
+
+[workspace.dependencies]
+# Internal crates
+loom-core = { path = "packages/core" }
+loom-indicators = { path = "packages/indicators" }
+loom-signals = { path = "packages/signals" }
+loom-risk = { path = "packages/risk" }
+loom-chart = { path = "packages/chart" }
+loom-data = { path = "packages/data" }
+loom-backtest = { path = "packages/backtest" }
+
+# External dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = true
+codegen-units = 1

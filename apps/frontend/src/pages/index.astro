@@ -1,0 +1,295 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Sidebar from '../components/Sidebar.astro';
+import Header from '../components/Header.astro';
+import LoadingSpinner from '../components/LoadingSpinner.astro';
+import ErrorDisplay from '../components/ErrorDisplay.astro';
+import IndicatorSelector from '../components/IndicatorSelector.astro';
+import PanelManager from '../components/PanelManager.astro';
+import LayoutManager from '../components/LayoutManager.astro';
+import LayoutPresets from '../components/LayoutPresets.astro';
+import DrawingToolbar from '../components/DrawingToolbar.astro';
+import ChartAxis from '../components/ChartAxis.astro';
+import ChartPan from '../components/ChartPan.astro';
+import PanelContainer from '../components/PanelContainer.astro';
+import PanelContextMenu from '../components/PanelContextMenu.astro';
+import Toast from '../components/Toast.astro';
+import CacheManager from '../components/CacheManager.astro';
+import ChartTooltip from '../components/ChartTooltip.astro';
+import CandleCountdown from '../components/CandleCountdown.astro';
+import StateManager from '../components/StateManager.astro';
+import EntropyOverlay from '../components/EntropyOverlay.astro';
+import RegimeIndicator from '../components/RegimeIndicator.astro';
+---
+
+<Layout title="Loom - Trading UI">
+  <div
+    x-data="tradingApp()"
+    x-init="init()"
+    class="flex h-screen w-full bg-background relative"
+  >
+    <!-- Sidebar -->
+    <Sidebar />
+
+    <!-- Main Content Area -->
+    <div class="duration-300 translate-x-[72px] max-w-[calc(100%-72px)] flex-1 flex flex-col">
+      <!-- Header -->
+      <Header />
+
+      <!-- Main Content -->
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- Chart Toolbar - Symbol, Timeframe, Indicators -->
+        <div class="bg-card border-b border-border">
+        <!-- Row 1: Symbol & Timeframe -->
+        <div class="h-10 flex items-center px-3 gap-4 border-b border-border">
+          <!-- Symbol Selection -->
+          <div class="flex items-center gap-2">
+            <select
+              x-model="selectedSource"
+              class="bg-background border border-input rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary"
+            >
+              <option value="binance">Binance</option>
+              <option value="coinbase">Coinbase</option>
+              <option value="kraken">Kraken</option>
+            </select>
+
+            <select
+              x-model="selectedSymbol"
+              @change="onSymbolChange()"
+              class="bg-background border border-input rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary"
+            >
+              <template x-for="symbol in symbols" :key="symbol">
+                <option :value="symbol" x-text="symbol"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- Timeframe Buttons -->
+          <div class="flex gap-1">
+            <template x-for="tf in timeframes" :key="tf">
+              <button
+                @click="setTimeframe(tf)"
+                :class="{
+                  'bg-primary text-primary-foreground': selectedTimeframe === tf,
+                  'bg-background text-muted-foreground hover:bg-accent': selectedTimeframe !== tf
+                }"
+                class="px-2 py-1 text-xs rounded-md transition font-medium border border-input"
+                x-text="tf"
+              ></button>
+            </template>
+          </div>
+
+          <!-- Candle Count -->
+          <div class="flex items-center gap-2 ml-auto">
+            <span class="text-[10px] text-muted-foreground">Candles:</span>
+            <span class="text-[10px] text-foreground font-semibold" x-text="candleCount || 0"></span>
+          </div>
+        </div>
+
+        <!-- Row 2: OHLCV & Indicators -->
+        <div class="h-9 flex items-center px-3 gap-4">
+          <!-- OHLCV Info -->
+          <div x-show="lastCandle" class="flex items-center gap-3 text-xs font-mono">
+            <div class="flex gap-1.5">
+              <span class="text-muted-foreground">O</span>
+              <span class="text-foreground" x-text="lastCandle?.o?.toFixed(2)"></span>
+            </div>
+            <div class="flex gap-1.5">
+              <span class="text-muted-foreground">H</span>
+              <span class="text-emerald-500" x-text="lastCandle?.h?.toFixed(2)"></span>
+            </div>
+            <div class="flex gap-1.5">
+              <span class="text-muted-foreground">L</span>
+              <span class="text-rose-500" x-text="lastCandle?.l?.toFixed(2)"></span>
+            </div>
+            <div class="flex gap-1.5">
+              <span class="text-muted-foreground">C</span>
+              <span
+                :class="lastCandle?.c >= lastCandle?.o ? 'text-emerald-500' : 'text-rose-500'"
+                x-text="lastCandle?.c?.toFixed(2)"
+              ></span>
+            </div>
+            <div class="flex gap-1.5">
+              <span class="text-muted-foreground">Vol</span>
+              <span class="text-muted-foreground" x-text="lastCandle?.v ? (lastCandle.v / 1000).toFixed(1) + 'k' : '-'"></span>
+            </div>
+          </div>
+
+          <!-- Vertical Divider -->
+          <div class="h-5 w-px bg-border"></div>
+
+          <!-- Scientific Indicators Button -->
+          <button
+            @click="window.dispatchEvent(new Event('show-indicator-selector'))"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+            title="Add Indicators"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Indicators
+          </button>
+
+          <!-- Panel Manager Button -->
+          <button
+            @click="showPanelManager = !showPanelManager"
+            :class="showPanelManager ? 'bg-accent text-accent-foreground' : ''"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+            title="Manage Panels"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+            Panels
+          </button>
+
+          <!-- Layout Manager Button (Task 6.1) -->
+          <button
+            @click="$store.layoutManagerOpen = true"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+            title="Manage Layouts"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+            </svg>
+            Layouts
+          </button>
+
+          <!-- Layout Presets Button (Task 6.2) -->
+          <button
+            @click="$store.layoutPresetsOpen = true"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 py-1"
+            title="Layout Presets"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Presets
+          </button>
+
+          <!-- Cache Manager Button -->
+          <button
+            @click="showCacheManager = !showCacheManager"
+            :class="showCacheManager ? 'bg-accent text-accent-foreground' : ''"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+            title="Cache Management"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            Cache
+          </button>
+
+          <!-- State Manager Button -->
+          <button
+            @click="$store.stateManagerOpen = !$store.stateManagerOpen"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+            title="Save/Load Chart States"
+          >
+            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+            States
+          </button>
+
+          <!-- Divider -->
+          <div class="h-5 w-px bg-border"></div>
+
+          <!-- Test Data Button -->
+          <div class="flex items-center gap-2">
+            <button
+              @click="loadTestData()"
+              :disabled="loading"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <span x-show="!loading">Generate Test Data</span>
+              <span x-show="loading">Generating...</span>
+            </button>
+
+            <button
+              @click="fetchCandles()"
+              :disabled="loading"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 px-2.5 py-1 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <span x-show="!loading">Fetch Live Data</span>
+              <span x-show="loading">Loading...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+        <!-- Chart Area -->
+        <main class="flex-1 bg-background relative">
+          <!-- Loading Overlay -->
+          <template x-if="loading">
+            <div class="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+              <LoadingSpinner size="lg" message="Loading..." />
+            </div>
+          </template>
+
+          <!-- Error Overlay -->
+          <template x-if="error">
+            <div class="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+              <ErrorDisplay title="Error" x-bind:message="error" />
+            </div>
+          </template>
+
+          <!-- Chart with Axes and Pan -->
+          <div id="chart-main-container" class="w-full h-full relative pan-enabled">
+            <!-- Main Chart Canvas -->
+            <div id="main-chart" class="w-full h-full"></div>
+
+            <!-- Chart Axes (overlay) -->
+            <ChartAxis />
+
+            <!-- Panel Container (for multi-panel support) -->
+            <PanelContainer />
+
+            <!-- Drawing Toolbar (overlay) -->
+            <DrawingToolbar />
+
+            <!-- Chart Tooltip (overlay) -->
+            <ChartTooltip />
+
+            <!-- Entropy Overlay (scientific indicators) -->
+            <EntropyOverlay />
+
+            <!-- Regime Indicator (market regime classification) -->
+            <RegimeIndicator />
+          </div>
+
+          <!-- Chart Pan Controller (invisible) -->
+          <ChartPan />
+        </main>
+      </div>
+    </div>
+
+    <!-- Drawing Toolbar moved to Sidebar -->
+
+    <!-- Modals & Overlays (outside main content) -->
+    <IndicatorSelector />
+    <PanelManager />
+    <LayoutManager />
+    <LayoutPresets />
+    <CacheManager />
+    <PanelContextMenu />
+    <Toast />
+    <CandleCountdown />
+    <StateManager />
+  </div>
+
+  <script is:inline>
+    console.log('[Index] Script running');
+  </script>
+
+  <script>
+    import { initTradingApp } from '../lib/app-rust';
+    import '../lib/toast'; // Initialize toast system
+    import '../lib/loading-state'; // Initialize loading state
+    import Alpine from 'alpinejs';
+
+    console.log('[Index] Module script running - Rust Chart Engine');
+    Alpine.data('tradingApp', initTradingApp);
+    console.log('[Index] Registered tradingApp with Rust Chart');
+  </script>
+</Layout>

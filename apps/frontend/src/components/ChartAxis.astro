@@ -1,0 +1,527 @@
+---
+// TradingView-style axis components with drag-to-scale functionality
+// Y-axis (price scale) and X-axis (time scale)
+---
+
+<div id="chart-axes-container">
+  <!-- Y-axis (Price Scale) - Right side -->
+  <div id="y-axis" class="axis y-axis">
+    <canvas id="y-axis-canvas"></canvas>
+    <div id="y-axis-drag-zone" class="drag-zone"></div>
+  </div>
+
+  <!-- X-axis (Time Scale) - Bottom -->
+  <div id="x-axis" class="axis x-axis">
+    <canvas id="x-axis-canvas"></canvas>
+    <div id="x-axis-drag-zone" class="drag-zone"></div>
+  </div>
+</div>
+
+<style>
+  #chart-axes-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+  }
+
+  .axis {
+    position: absolute;
+    background: rgba(20, 20, 30, 0.95);
+    border: 1px solid rgba(60, 60, 80, 0.8);
+    pointer-events: auto;
+    user-select: none;
+  }
+
+  .y-axis {
+    right: 0;
+    top: 0;
+    width: 80px;
+    height: 100%;
+    border-left: 2px solid rgba(60, 60, 80, 0.8);
+  }
+
+  .x-axis {
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 40px;
+    border-top: 2px solid rgba(60, 60, 80, 0.8);
+  }
+
+  .drag-zone {
+    position: absolute;
+    cursor: ns-resize;
+  }
+
+  .y-axis .drag-zone {
+    width: 100%;
+    height: 100%;
+    cursor: ns-resize;
+  }
+
+  .x-axis .drag-zone {
+    width: 100%;
+    height: 100%;
+    cursor: ew-resize;
+  }
+
+  .axis canvas {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .axis.dragging {
+    background: rgba(30, 30, 40, 0.98);
+  }
+
+  .axis-context-menu {
+    position: absolute;
+    background: rgba(25, 25, 35, 0.98);
+    border: 1px solid rgba(60, 60, 80, 0.8);
+    border-radius: 4px;
+    padding: 4px;
+    min-width: 150px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+  }
+
+  .axis-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 13px;
+    color: rgba(220, 220, 240, 0.9);
+  }
+
+  .axis-menu-item:hover {
+    background: rgba(60, 60, 80, 0.6);
+  }
+
+  .axis-menu-divider {
+    height: 1px;
+    background: rgba(60, 60, 80, 0.5);
+    margin: 4px 0;
+  }
+</style>
+
+<script>
+  interface ScaleState {
+    min: number;
+    max: number;
+    autoScale: boolean;
+  }
+
+  interface DragState {
+    active: boolean;
+    axis: 'y' | 'x';
+    startY: number;
+    startX: number;
+    startMin: number;
+    startMax: number;
+  }
+
+  class ChartAxisManager {
+    private yAxisCanvas: HTMLCanvasElement;
+    private xAxisCanvas: HTMLCanvasElement;
+    private yAxisDragZone: HTMLElement;
+    private xAxisDragZone: HTMLElement;
+    private yAxis: HTMLElement;
+    private xAxis: HTMLElement;
+
+    private yScale: ScaleState = { min: 40000, max: 42000, autoScale: true };
+    private xScale: ScaleState = { min: 0, max: 100, autoScale: true };
+    private dragState: DragState | null = null;
+
+    private contextMenu: HTMLElement | null = null;
+
+    constructor() {
+      this.yAxisCanvas = document.getElementById('y-axis-canvas') as HTMLCanvasElement;
+      this.xAxisCanvas = document.getElementById('x-axis-canvas') as HTMLCanvasElement;
+      this.yAxisDragZone = document.getElementById('y-axis-drag-zone') as HTMLElement;
+      this.xAxisDragZone = document.getElementById('x-axis-drag-zone') as HTMLElement;
+      this.yAxis = document.getElementById('y-axis') as HTMLElement;
+      this.xAxis = document.getElementById('x-axis') as HTMLElement;
+
+      this.setupEventListeners();
+
+      // Setup canvases after a short delay to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.setupCanvases();
+          this.render();
+        });
+      });
+    }
+
+    private setupCanvases(): void {
+      const dpr = window.devicePixelRatio || 1;
+
+      // Y-axis canvas
+      const yRect = this.yAxis.getBoundingClientRect();
+      const yWidth = yRect.width || 80;
+      const yHeight = yRect.height || window.innerHeight;
+
+      this.yAxisCanvas.width = yWidth * dpr;
+      this.yAxisCanvas.height = yHeight * dpr;
+      this.yAxisCanvas.style.width = `${yWidth}px`;
+      this.yAxisCanvas.style.height = `${yHeight}px`;
+
+      // X-axis canvas
+      const xRect = this.xAxis.getBoundingClientRect();
+      const xWidth = xRect.width || window.innerWidth;
+      const xHeight = xRect.height || 40;
+
+      this.xAxisCanvas.width = xWidth * dpr;
+      this.xAxisCanvas.height = xHeight * dpr;
+      this.xAxisCanvas.style.width = `${xWidth}px`;
+      this.xAxisCanvas.style.height = `${xHeight}px`;
+
+      console.log('[ChartAxis] Canvas sizes:', {
+        yAxis: { width: this.yAxisCanvas.width, height: this.yAxisCanvas.height },
+        xAxis: { width: this.xAxisCanvas.width, height: this.xAxisCanvas.height }
+      });
+    }
+
+    private setupEventListeners(): void {
+      // Y-axis drag
+      this.yAxisDragZone.addEventListener('mousedown', (e) => this.handleYAxisMouseDown(e));
+
+      // X-axis drag
+      this.xAxisDragZone.addEventListener('mousedown', (e) => this.handleXAxisMouseDown(e));
+
+      // Global mouse events
+      document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+      document.addEventListener('mouseup', () => this.handleMouseUp());
+
+      // Context menus
+      this.yAxis.addEventListener('contextmenu', (e) => this.showYAxisContextMenu(e));
+      this.xAxis.addEventListener('contextmenu', (e) => this.showXAxisContextMenu(e));
+
+      // Window resize
+      window.addEventListener('resize', () => {
+        this.setupCanvases();
+        this.render();
+      });
+    }
+
+    private handleYAxisMouseDown(e: MouseEvent): void {
+      e.preventDefault();
+      this.dragState = {
+        active: true,
+        axis: 'y',
+        startY: e.clientY,
+        startX: 0,
+        startMin: this.yScale.min,
+        startMax: this.yScale.max
+      };
+      this.yScale.autoScale = false;
+      this.yAxis.classList.add('dragging');
+    }
+
+    private handleXAxisMouseDown(e: MouseEvent): void {
+      e.preventDefault();
+      this.dragState = {
+        active: true,
+        axis: 'x',
+        startY: 0,
+        startX: e.clientX,
+        startMin: this.xScale.min,
+        startMax: this.xScale.max
+      };
+      this.xScale.autoScale = false;
+      this.xAxis.classList.add('dragging');
+    }
+
+    private handleMouseMove(e: MouseEvent): void {
+      if (!this.dragState?.active) return;
+
+      if (this.dragState.axis === 'y') {
+        const deltaY = e.clientY - this.dragState.startY;
+        const height = this.yAxis.getBoundingClientRect().height;
+        const range = this.dragState.startMax - this.dragState.startMin;
+
+        // Scale based on drag distance
+        const scaleFactor = 1 + (deltaY / height) * 2;
+        const newRange = range * scaleFactor;
+        const center = (this.dragState.startMin + this.dragState.startMax) / 2;
+
+        this.yScale.min = center - newRange / 2;
+        this.yScale.max = center + newRange / 2;
+
+        this.render();
+        this.notifyScaleChange('y');
+      } else if (this.dragState.axis === 'x') {
+        const deltaX = e.clientX - this.dragState.startX;
+        const width = this.xAxis.getBoundingClientRect().width;
+        const range = this.dragState.startMax - this.dragState.startMin;
+
+        // Scale based on drag distance
+        const scaleFactor = 1 + (deltaX / width) * 2;
+        const newRange = range * scaleFactor;
+        const center = (this.dragState.startMin + this.dragState.startMax) / 2;
+
+        this.xScale.min = center - newRange / 2;
+        this.xScale.max = center + newRange / 2;
+
+        this.render();
+        this.notifyScaleChange('x');
+      }
+    }
+
+    private handleMouseUp(): void {
+      if (this.dragState?.active) {
+        this.yAxis.classList.remove('dragging');
+        this.xAxis.classList.remove('dragging');
+        this.dragState = null;
+      }
+    }
+
+    private showYAxisContextMenu(e: MouseEvent): void {
+      e.preventDefault();
+      this.hideContextMenu();
+
+      this.contextMenu = document.createElement('div');
+      this.contextMenu.className = 'axis-context-menu';
+      this.contextMenu.style.left = `${e.clientX}px`;
+      this.contextMenu.style.top = `${e.clientY}px`;
+
+      const items = [
+        { label: 'Auto Scale', action: () => this.toggleAutoScale('y') },
+        { label: 'Reset Scale', action: () => this.resetScale('y') },
+        { divider: true },
+        { label: 'Log Scale', action: () => this.toggleLogScale('y') },
+        { label: 'Percentage', action: () => this.togglePercentage('y') },
+        { divider: true },
+        { label: 'Settings...', action: () => this.showScaleSettings('y') }
+      ];
+
+      items.forEach(item => {
+        if (item.divider) {
+          const divider = document.createElement('div');
+          divider.className = 'axis-menu-divider';
+          this.contextMenu!.appendChild(divider);
+        } else {
+          const menuItem = document.createElement('div');
+          menuItem.className = 'axis-menu-item';
+          menuItem.textContent = item.label;
+          menuItem.onclick = () => {
+            item.action();
+            this.hideContextMenu();
+          };
+          this.contextMenu!.appendChild(menuItem);
+        }
+      });
+
+      document.body.appendChild(this.contextMenu);
+
+      // Close on click outside
+      setTimeout(() => {
+        document.addEventListener('click', () => this.hideContextMenu(), { once: true });
+      }, 0);
+    }
+
+    private showXAxisContextMenu(e: MouseEvent): void {
+      e.preventDefault();
+      this.hideContextMenu();
+
+      this.contextMenu = document.createElement('div');
+      this.contextMenu.className = 'axis-context-menu';
+      this.contextMenu.style.left = `${e.clientX}px`;
+      this.contextMenu.style.top = `${e.clientY}px`;
+
+      const items = [
+        { label: 'Auto Scale', action: () => this.toggleAutoScale('x') },
+        { label: 'Reset Scale', action: () => this.resetScale('x') },
+        { divider: true },
+        { label: 'Settings...', action: () => this.showScaleSettings('x') }
+      ];
+
+      items.forEach(item => {
+        if (item.divider) {
+          const divider = document.createElement('div');
+          divider.className = 'axis-menu-divider';
+          this.contextMenu!.appendChild(divider);
+        } else {
+          const menuItem = document.createElement('div');
+          menuItem.className = 'axis-menu-item';
+          menuItem.textContent = item.label;
+          menuItem.onclick = () => {
+            item.action();
+            this.hideContextMenu();
+          };
+          this.contextMenu!.appendChild(menuItem);
+        }
+      });
+
+      document.body.appendChild(this.contextMenu);
+
+      setTimeout(() => {
+        document.addEventListener('click', () => this.hideContextMenu(), { once: true });
+      }, 0);
+    }
+
+    private hideContextMenu(): void {
+      if (this.contextMenu) {
+        this.contextMenu.remove();
+        this.contextMenu = null;
+      }
+    }
+
+    private toggleAutoScale(axis: 'y' | 'x'): void {
+      const scale = axis === 'y' ? this.yScale : this.xScale;
+      scale.autoScale = !scale.autoScale;
+      if (scale.autoScale) {
+        this.resetScale(axis);
+      }
+    }
+
+    private resetScale(axis: 'y' | 'x'): void {
+      if (axis === 'y') {
+        this.yScale.min = 40000;
+        this.yScale.max = 42000;
+        this.yScale.autoScale = true;
+      } else {
+        this.xScale.min = 0;
+        this.xScale.max = 100;
+        this.xScale.autoScale = true;
+      }
+      this.render();
+      this.notifyScaleChange(axis);
+    }
+
+    private toggleLogScale(axis: 'y' | 'x'): void {
+      console.log(`Toggle log scale for ${axis}-axis`);
+      // TODO: Implement log scale
+    }
+
+    private togglePercentage(axis: 'y' | 'x'): void {
+      console.log(`Toggle percentage for ${axis}-axis`);
+      // TODO: Implement percentage mode
+    }
+
+    private showScaleSettings(axis: 'y' | 'x'): void {
+      console.log(`Show settings for ${axis}-axis`);
+      // TODO: Implement settings dialog
+    }
+
+    private notifyScaleChange(axis: 'y' | 'x'): void {
+      const scale = axis === 'y' ? this.yScale : this.xScale;
+      const event = new CustomEvent('scale-change', {
+        detail: { axis, min: scale.min, max: scale.max }
+      });
+      window.dispatchEvent(event);
+    }
+
+    private render(): void {
+      this.renderYAxis();
+      this.renderXAxis();
+    }
+
+    private renderYAxis(): void {
+      const canvas = this.yAxisCanvas;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.width / dpr;
+      const height = canvas.height / dpr;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+
+      // Background
+      ctx.fillStyle = 'rgba(20, 20, 30, 0.95)';
+      ctx.fillRect(0, 0, width, height);
+
+      // Price labels
+      const range = this.yScale.max - this.yScale.min;
+      const tickCount = Math.min(10, Math.floor(height / 30));
+      const tickSpacing = range / tickCount;
+
+      ctx.font = '11px monospace';
+      ctx.fillStyle = 'rgba(220, 220, 240, 0.8)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      for (let i = 0; i <= tickCount; i++) {
+        const price = this.yScale.min + (i * tickSpacing);
+        const y = height - (i * (height / tickCount));
+
+        // Grid line indicator
+        ctx.fillStyle = 'rgba(60, 60, 80, 0.5)';
+        ctx.fillRect(0, y, 5, 1);
+
+        // Price label
+        ctx.fillStyle = 'rgba(220, 220, 240, 0.8)';
+        ctx.fillText(price.toFixed(2), width - 5, y);
+      }
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    private renderXAxis(): void {
+      const canvas = this.xAxisCanvas;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.width / dpr;
+      const height = canvas.height / dpr;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+
+      // Background
+      ctx.fillStyle = 'rgba(20, 20, 30, 0.95)';
+      ctx.fillRect(0, 0, width, height);
+
+      // Time labels (placeholder - would show actual timestamps)
+      const range = this.xScale.max - this.xScale.min;
+      const tickCount = Math.min(8, Math.floor(width / 100));
+      const tickSpacing = range / tickCount;
+
+      ctx.font = '11px monospace';
+      ctx.fillStyle = 'rgba(220, 220, 240, 0.8)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      for (let i = 0; i <= tickCount; i++) {
+        const value = this.xScale.min + (i * tickSpacing);
+        const x = i * (width / tickCount);
+
+        // Grid line indicator
+        ctx.fillStyle = 'rgba(60, 60, 80, 0.5)';
+        ctx.fillRect(x, 0, 1, 5);
+
+        // Time label (simplified)
+        ctx.fillStyle = 'rgba(220, 220, 240, 0.8)';
+        ctx.fillText(`T${Math.floor(value)}`, x, 10);
+      }
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    public updateYScale(min: number, max: number): void {
+      this.yScale.min = min;
+      this.yScale.max = max;
+      this.render();
+    }
+
+    public updateXScale(min: number, max: number): void {
+      this.xScale.min = min;
+      this.xScale.max = max;
+      this.render();
+    }
+  }
+
+  // Initialize
+  if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+      (window as any).chartAxisManager = new ChartAxisManager();
+    });
+  }
+</script>

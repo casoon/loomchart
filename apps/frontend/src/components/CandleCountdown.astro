@@ -1,0 +1,45 @@
+---
+// Candle Countdown - Shows time until next candle
+---
+
+<div id="candle-countdown" class="candle-countdown hidden">
+  <span class="countdown-label">Next candle:</span>
+  <span id="countdown-value" class="countdown-time">--:--</span>
+</div>
+
+<style>
+  .candle-countdown {
+    position: fixed;
+    top: 76px; /* Below toolbar */
+    left: 88px; /* After sidebar */
+    padding: 6px 12px;
+    background: rgba(15, 20, 25, 0.9);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 6px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    z-index: 500;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .candle-countdown.hidden {
+    display: none;
+  }
+
+  .countdown-label {
+    color: #9ca3af;
+    font-weight: 500;
+  }
+
+  .countdown-time {
+    color: #22c55e;
+    font-weight: 700;
+    font-size: 12px;
+    min-width: 48px;
+    text-align: right;
+  }
+</style>

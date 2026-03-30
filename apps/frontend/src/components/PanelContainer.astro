@@ -1,0 +1,813 @@
+---
+// Multi-Panel Container with Draggable Separators
+// Renders panels dynamically based on WASM panel layout
+---
+
+<div id="panel-container" class="flex-1 flex flex-col relative bg-background overflow-hidden">
+  <!-- Panels will be inserted here dynamically -->
+</div>
+
+<style>
+  .panel {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .panel:last-child {
+    border-bottom: none;
+  }
+
+  .panel.dragging {
+    opacity: 0.5;
+  }
+
+  .panel.drop-before {
+    border-top: 3px solid hsl(var(--primary));
+  }
+
+  .panel.drop-after {
+    border-bottom: 3px solid hsl(var(--primary));
+  }
+
+  .panel-separator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 5px;
+    bottom: -3px;
+    cursor: ns-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background-color 0.2s;
+  }
+
+  .panel-separator:hover,
+  .panel-separator.dragging {
+    background-color: hsl(var(--primary) / 0.5);
+  }
+
+  .panel-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .panel-header {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+    cursor: grab;
+  }
+
+  .panel-header[draggable="true"] {
+    pointer-events: auto;
+  }
+
+  .panel-header.dragging {
+    cursor: grabbing;
+    opacity: 0.5;
+  }
+
+  .panel-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .panel-controls {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    z-index: 5;
+    display: flex;
+    gap: 4px;
+  }
+
+  .panel-control-btn {
+    pointer-events: auto;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: hsl(var(--background) / 0.8);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .panel-control-btn:hover {
+    background: hsl(var(--accent));
+    color: hsl(var(--foreground));
+  }
+</style>
+
+<script>
+  import { layoutStorage } from '../lib/layout-storage';
+
+  interface Panel {
+    id: string;
+    title: string;
+    y_offset: number;
+    computed_height: number;
+    panel_type: any;
+    config: any;
+  }
+
+  interface PanelLayout {
+    panels: Panel[];
+    total_height: number;
+  }
+
+  class PanelContainerManager {
+    private container: HTMLElement;
+    private panels: Map<string, {
+      element: HTMLElement;
+      canvas: HTMLCanvasElement;
+      separator?: HTMLElement;
+    }> = new Map();
+    private dragState: {
+      active: boolean;
+      panelId: string | null;
+      nextPanelId: string | null;
+      startY: number;
+      startHeight: number;
+      nextPanelStartHeight: number;
+    } = {
+      active: false,
+      panelId: null,
+      nextPanelId: null,
+      startY: 0,
+      startHeight: 0,
+      nextPanelStartHeight: 0,
+    };
+
+    // Task 5.1: Resize constraints
+    private readonly MIN_PANEL_HEIGHT = 100; // pixels
+    private readonly MAX_PANEL_HEIGHT = 800; // pixels
+    private resizeDebounceTimer: number | null = null;
+
+    // Task 5.2: Panel reordering
+    private draggedPanelIndex: number = -1;
+    private draggedPanelElement: HTMLElement | null = null;
+
+    // Task 6.1: Layout persistence
+    private autoSaveTimer: number | null = null;
+    private readonly AUTO_SAVE_DELAY = 2000; // 2 seconds
+
+    // Resize debouncing
+    private resizeTimer: number | null = null;
+    private readonly RESIZE_DEBOUNCE = 100; // 100ms
+
+    constructor(containerId: string) {
+      this.container = document.getElementById(containerId)!;
+      if (!this.container) {
+        throw new Error(`Container #${containerId} not found`);
+      }
+
+      // Listen for window resize with debounce
+      window.addEventListener('resize', () => {
+        if (this.resizeTimer) {
+          clearTimeout(this.resizeTimer);
+        }
+        this.resizeTimer = window.setTimeout(() => this.handleResize(), this.RESIZE_DEBOUNCE);
+      });
+
+      // Global mouse handlers for drag
+      document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+      document.addEventListener('mouseup', () => this.handleMouseUp());
+
+      // Task 5.3: Listen for panel actions from context menu
+      window.addEventListener('panel-action', (e: Event) => {
+        const customEvent = e as CustomEvent;
+        this.handlePanelAction(customEvent.detail);
+      });
+    }
+
+    async refresh() {
+      try {
+        const wasm = (window as any).getWasm?.();
+        if (!wasm) {
+          console.warn('WASM not initialized yet');
+          return;
+        }
+
+        const layoutJson = await wasm.get_panel_layout();
+        const layout: PanelLayout = JSON.parse(layoutJson);
+
+        this.render(layout);
+
+        // Task 6.1: Auto-save layout after changes
+        this.scheduleAutoSave(layoutJson);
+      } catch (err) {
+        console.error('Failed to refresh panels:', err);
+      }
+    }
+
+    // Task 6.1: Schedule auto-save (debounced)
+    private scheduleAutoSave(layoutJson: string) {
+      if (this.autoSaveTimer) {
+        clearTimeout(this.autoSaveTimer);
+      }
+
+      this.autoSaveTimer = window.setTimeout(async () => {
+        try {
+          await layoutStorage.autoSave(layoutJson);
+          console.log('[PanelContainer] Layout auto-saved');
+        } catch (err) {
+          console.error('Failed to auto-save layout:', err);
+        }
+      }, this.AUTO_SAVE_DELAY);
+    }
+
+    // Task 6.1: Initialize and restore saved layout
+    async initializeLayout() {
+      try {
+        await layoutStorage.init();
+
+        // Try to restore auto-saved layout
+        const autoSaved = layoutStorage.loadAutoSave();
+        if (autoSaved) {
+          const wasm = (window as any).getWasm?.();
+          if (wasm) {
+            await wasm.restore_panel_layout(autoSaved);
+            console.log('[PanelContainer] Restored auto-saved layout');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to initialize layout storage:', err);
+      }
+    }
+
+    private render(layout: PanelLayout) {
+      // Clear existing panels
+      this.container.innerHTML = '';
+      this.panels.clear();
+
+      // Update container height
+      const containerHeight = this.container.clientHeight;
+      const wasm = (window as any).getWasm?.();
+      if (wasm && containerHeight > 0) {
+        wasm.set_panel_container_height(containerHeight).catch(console.error);
+      }
+
+      // Render each panel
+      layout.panels.forEach((panel, index) => {
+        this.createPanel(panel, index < layout.panels.length - 1);
+      });
+    }
+
+    private createPanel(panel: Panel, hasSeparator: boolean) {
+      // Panel wrapper
+      const panelEl = document.createElement('div');
+      panelEl.className = 'panel';
+      panelEl.style.height = `${panel.computed_height}px`;
+      panelEl.dataset.panelId = panel.id;
+
+      // Canvas
+      const canvas = document.createElement('canvas');
+      canvas.className = 'panel-canvas';
+      canvas.width = this.container.clientWidth * window.devicePixelRatio;
+      canvas.height = panel.computed_height * window.devicePixelRatio;
+      canvas.style.width = `${this.container.clientWidth}px`;
+      canvas.style.height = `${panel.computed_height}px`;
+
+      // Header (draggable for reordering - Task 5.2)
+      const header = document.createElement('div');
+      header.className = 'panel-header';
+      header.setAttribute('draggable', 'true');
+      header.innerHTML = `<span class="panel-title">${panel.title}</span>`;
+
+      // Add drag event listeners for reordering
+      const panelIndex = Array.from(this.container.children).length;
+      this.setupDragListeners(header, panelEl, panelIndex);
+
+      // Controls
+      const controls = document.createElement('div');
+      controls.className = 'panel-controls';
+
+      // Settings button
+      const settingsBtn = document.createElement('button');
+      settingsBtn.className = 'panel-control-btn';
+      settingsBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`;
+      settingsBtn.title = 'Panel Settings';
+      settingsBtn.addEventListener('click', () => this.showPanelSettings(panel.id));
+
+      // Remove button (except for main chart)
+      if (panel.panel_type.type !== 'Chart') {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'panel-control-btn';
+        removeBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+        removeBtn.title = 'Remove Panel';
+        removeBtn.addEventListener('click', () => this.removePanel(panel.id));
+        controls.appendChild(removeBtn);
+      }
+
+      controls.appendChild(settingsBtn);
+
+      // Assemble
+      panelEl.appendChild(canvas);
+      panelEl.appendChild(header);
+      panelEl.appendChild(controls);
+
+      // Separator (draggable resize handle)
+      let separator: HTMLElement | undefined;
+      if (hasSeparator) {
+        separator = document.createElement('div');
+        separator.className = 'panel-separator';
+        separator.addEventListener('mousedown', (e) => this.handleSeparatorMouseDown(e, panel.id, panel.computed_height));
+        panelEl.appendChild(separator);
+      }
+
+      // Task 5.3: Right-click context menu
+      panelEl.addEventListener('contextmenu', (e) => this.showContextMenu(e, panel));
+
+      this.container.appendChild(panelEl);
+      this.panels.set(panel.id, { element: panelEl, canvas, separator });
+
+      // Render panel content
+      this.renderPanelContent(panel, canvas);
+    }
+
+    private renderPanelContent(panel: Panel, canvas: HTMLCanvasElement) {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Clear
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Placeholder rendering (will be replaced with actual chart data)
+      ctx.fillStyle = 'hsl(var(--muted) / 0.1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid
+      ctx.strokeStyle = 'hsl(var(--border))';
+      ctx.lineWidth = 1;
+      const gridSpacing = 50 * window.devicePixelRatio;
+      for (let y = 0; y < canvas.height; y += gridSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Title
+      ctx.fillStyle = 'hsl(var(--muted-foreground))';
+      ctx.font = `${14 * window.devicePixelRatio}px sans-serif`;
+      ctx.fillText(`${panel.title} - Panel Content`, 20 * window.devicePixelRatio, 40 * window.devicePixelRatio);
+    }
+
+    private handleSeparatorMouseDown(e: MouseEvent, panelId: string, currentHeight: number) {
+      e.preventDefault();
+
+      // Find next panel
+      const panelIds = Array.from(this.panels.keys());
+      const currentIndex = panelIds.indexOf(panelId);
+      const nextPanelId = currentIndex < panelIds.length - 1 ? panelIds[currentIndex + 1] : null;
+      const nextPanel = nextPanelId ? this.panels.get(nextPanelId) : null;
+      const nextPanelHeight = nextPanel ? parseInt(nextPanel.element.style.height || '0') : 0;
+
+      this.dragState = {
+        active: true,
+        panelId,
+        nextPanelId,
+        startY: e.clientY,
+        startHeight: currentHeight,
+        nextPanelStartHeight: nextPanelHeight,
+      };
+
+      const panel = this.panels.get(panelId);
+      if (panel?.separator) {
+        panel.separator.classList.add('dragging');
+      }
+
+      // Add visual feedback
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    private handleMouseMove(e: MouseEvent) {
+      if (!this.dragState.active || !this.dragState.panelId) return;
+
+      const deltaY = e.clientY - this.dragState.startY;
+
+      // Calculate new heights with constraints
+      let newHeight = this.dragState.startHeight + deltaY;
+      let newNextHeight = this.dragState.nextPanelStartHeight - deltaY;
+
+      // Apply min/max constraints
+      newHeight = Math.max(this.MIN_PANEL_HEIGHT, Math.min(this.MAX_PANEL_HEIGHT, newHeight));
+
+      if (this.dragState.nextPanelId) {
+        newNextHeight = Math.max(this.MIN_PANEL_HEIGHT, Math.min(this.MAX_PANEL_HEIGHT, newNextHeight));
+
+        // Ensure total height is conserved (adjust if hitting constraints)
+        const totalOriginal = this.dragState.startHeight + this.dragState.nextPanelStartHeight;
+        const totalNew = newHeight + newNextHeight;
+
+        if (Math.abs(totalNew - totalOriginal) > 1) {
+          // One panel hit a constraint, adjust the other
+          if (newHeight <= this.MIN_PANEL_HEIGHT) {
+            newHeight = this.MIN_PANEL_HEIGHT;
+            newNextHeight = totalOriginal - this.MIN_PANEL_HEIGHT;
+          } else if (newHeight >= this.MAX_PANEL_HEIGHT) {
+            newHeight = this.MAX_PANEL_HEIGHT;
+            newNextHeight = totalOriginal - this.MAX_PANEL_HEIGHT;
+          } else if (newNextHeight <= this.MIN_PANEL_HEIGHT) {
+            newNextHeight = this.MIN_PANEL_HEIGHT;
+            newHeight = totalOriginal - this.MIN_PANEL_HEIGHT;
+          } else if (newNextHeight >= this.MAX_PANEL_HEIGHT) {
+            newNextHeight = this.MAX_PANEL_HEIGHT;
+            newHeight = totalOriginal - this.MAX_PANEL_HEIGHT;
+          }
+        }
+      }
+
+      // Update panel heights visually (optimistic)
+      const panel = this.panels.get(this.dragState.panelId);
+      if (panel) {
+        panel.element.style.height = `${newHeight}px`;
+      }
+
+      if (this.dragState.nextPanelId) {
+        const nextPanel = this.panels.get(this.dragState.nextPanelId);
+        if (nextPanel) {
+          nextPanel.element.style.height = `${newNextHeight}px`;
+        }
+      }
+
+      // Debounced save
+      this.debouncedSaveLayout();
+    }
+
+    private async handleMouseUp() {
+      if (!this.dragState.active || !this.dragState.panelId) return;
+
+      const panelId = this.dragState.panelId;
+      const panel = this.panels.get(panelId);
+
+      if (panel?.separator) {
+        panel.separator.classList.remove('dragging');
+      }
+
+      // Remove visual feedback
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      // Calculate final height
+      const finalHeight = parseInt(panel?.element.style.height || '0');
+
+      // Clear any pending debounced save
+      if (this.resizeDebounceTimer) {
+        clearTimeout(this.resizeDebounceTimer);
+        this.resizeDebounceTimer = null;
+      }
+
+      // Final save to WASM
+      try {
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          await wasm.resize_panel(panelId, finalHeight);
+          // Note: Not refreshing here to keep optimistic UI
+          this.showSaveIndicator();
+        }
+      } catch (err) {
+        console.error('Failed to resize panel:', err);
+        this.showToast('error', 'Failed to save layout');
+      }
+
+      this.dragState = {
+        active: false,
+        panelId: null,
+        nextPanelId: null,
+        startY: 0,
+        startHeight: 0,
+        nextPanelStartHeight: 0,
+      };
+    }
+
+    private debouncedSaveLayout(): void {
+      if (this.resizeDebounceTimer) {
+        clearTimeout(this.resizeDebounceTimer);
+      }
+
+      // Don't actually save during drag - just prepare
+      // Actual save happens on mouse up
+    }
+
+    private showSaveIndicator(): void {
+      this.showToast('success', 'Layout saved', 2000);
+    }
+
+    private showToast(type: 'success' | 'error' | 'info' | 'warning', message: string, duration = 3000): void {
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: { type, message, duration }
+      }));
+    }
+
+    private async removePanel(panelId: string) {
+      try {
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          await wasm.remove_panel(panelId);
+          await this.refresh();
+        }
+      } catch (err) {
+        console.error('Failed to remove panel:', err);
+      }
+    }
+
+    private showPanelSettings(panelId: string) {
+      console.log('Show settings for panel:', panelId);
+      // TODO: Implement settings modal
+    }
+
+    // Task 5.2: Panel reordering drag-and-drop listeners
+    private setupDragListeners(header: HTMLElement, panelEl: HTMLElement, index: number) {
+      header.addEventListener('dragstart', (e) => {
+        this.draggedPanelIndex = index;
+        this.draggedPanelElement = panelEl;
+        panelEl.classList.add('dragging');
+        header.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', index.toString());
+        }
+      });
+
+      header.addEventListener('dragend', () => {
+        panelEl.classList.remove('dragging');
+        header.classList.remove('dragging');
+        this.clearDropPlaceholders();
+        this.draggedPanelIndex = -1;
+        this.draggedPanelElement = null;
+      });
+
+      panelEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (this.draggedPanelIndex === -1 || this.draggedPanelIndex === index) {
+          return; // No drag in progress or dragging over self
+        }
+
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'move';
+        }
+
+        this.showDropPlaceholder(panelEl, index);
+      });
+
+      panelEl.addEventListener('dragleave', (e) => {
+        // Only clear if actually leaving the panel (not just entering a child)
+        if (e.target === panelEl) {
+          this.clearDropPlaceholders();
+        }
+      });
+
+      panelEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (this.draggedPanelIndex === -1 || this.draggedPanelIndex === index) {
+          return; // No drag in progress or dropped on self
+        }
+
+        this.handlePanelDrop(index);
+      });
+    }
+
+    private showDropPlaceholder(targetPanel: HTMLElement, targetIndex: number) {
+      this.clearDropPlaceholders();
+
+      // Show drop indicator above or below based on drag direction
+      if (this.draggedPanelIndex < targetIndex) {
+        targetPanel.classList.add('drop-after');
+      } else {
+        targetPanel.classList.add('drop-before');
+      }
+    }
+
+    private clearDropPlaceholders() {
+      this.container.querySelectorAll('.panel').forEach(panel => {
+        panel.classList.remove('drop-before', 'drop-after');
+      });
+    }
+
+    private async handlePanelDrop(targetIndex: number) {
+      if (this.draggedPanelIndex === -1 || this.draggedPanelIndex === targetIndex) {
+        return;
+      }
+
+      const fromIndex = this.draggedPanelIndex;
+      const toIndex = targetIndex;
+
+      try {
+        // Call WASM to reorder panels
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          await wasm.reorder_panels(fromIndex, toIndex);
+
+          // Optimistic UI update: reorder DOM elements
+          const panels = Array.from(this.container.querySelectorAll('.panel'));
+          if (fromIndex < panels.length && toIndex < panels.length) {
+            const movedPanel = panels[fromIndex];
+            this.container.removeChild(movedPanel);
+
+            if (toIndex >= panels.length - 1) {
+              this.container.appendChild(movedPanel);
+            } else {
+              const adjustedIndex = fromIndex < toIndex ? toIndex : toIndex;
+              const referencePanel = panels[adjustedIndex];
+              this.container.insertBefore(movedPanel, referencePanel);
+            }
+          }
+
+          this.showToast('success', 'Panel reordered', 2000);
+        }
+      } catch (err) {
+        console.error('Failed to reorder panels:', err);
+        this.showToast('error', 'Failed to reorder panels');
+        // Refresh to restore correct state
+        await this.refresh();
+      } finally {
+        this.clearDropPlaceholders();
+      }
+    }
+
+    private handleResize() {
+      const containerHeight = this.container.clientHeight;
+      const containerWidth = this.container.clientWidth;
+
+      // Update all canvas elements to match container size
+      const canvases = this.container.querySelectorAll('canvas.panel-canvas');
+      canvases.forEach((canvas: Element) => {
+        const canvasEl = canvas as HTMLCanvasElement;
+        const panel = canvasEl.closest('.panel') as HTMLElement;
+        if (panel) {
+          const panelHeight = parseInt(panel.style.height) || 0;
+
+          // Update canvas dimensions with device pixel ratio
+          canvasEl.width = containerWidth * window.devicePixelRatio;
+          canvasEl.height = panelHeight * window.devicePixelRatio;
+          canvasEl.style.width = `${containerWidth}px`;
+          canvasEl.style.height = `${panelHeight}px`;
+        }
+      });
+
+      // Update WASM container height if available
+      const wasm = (window as any).getWasm?.();
+      if (wasm && containerHeight > 0) {
+        try {
+          const result = wasm.set_panel_container_height?.(containerHeight);
+          if (result && typeof result.then === 'function') {
+            result.then(() => this.refresh()).catch(console.error);
+          } else {
+            // Method doesn't return a promise, just refresh
+            this.refresh();
+          }
+        } catch (err) {
+          console.error('Error setting container height:', err);
+        }
+      }
+    }
+
+    // Task 5.3: Show context menu for panel
+    private async showContextMenu(e: MouseEvent, panel: Panel) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const wasm = (window as any).getWasm?.();
+      if (!wasm) return;
+
+      try {
+        // Check current state
+        const isMaximized = await wasm.is_panel_maximized(panel.id);
+        const isMinimized = await wasm.is_panel_collapsed(panel.id);
+
+        // Dispatch event to show context menu
+        window.dispatchEvent(new CustomEvent('contextmenu-panel', {
+          detail: {
+            x: e.clientX,
+            y: e.clientY,
+            panelId: panel.id,
+            panelType: panel.panel_type.type || 'Chart',
+            isMaximized,
+            isMinimized,
+          }
+        }));
+      } catch (err) {
+        console.error('Failed to show context menu:', err);
+      }
+    }
+
+    // Task 5.3: Handle panel actions from context menu
+    private async handlePanelAction(detail: { action: string; panelId: string; panelType: string }) {
+      const { action, panelId } = detail;
+      const wasm = (window as any).getWasm?.();
+      if (!wasm) return;
+
+      try {
+        switch (action) {
+          case 'maximize':
+            await wasm.maximize_panel(panelId);
+            this.showToast('success', 'Panel maximized', 2000);
+            break;
+
+          case 'restore':
+            await wasm.restore_all_panels();
+            this.showToast('success', 'Panels restored', 2000);
+            break;
+
+          case 'minimize':
+            await wasm.collapse_panel(panelId);
+            this.showToast('success', 'Panel minimized', 2000);
+            break;
+
+          case 'expand':
+            await wasm.expand_panel(panelId);
+            this.showToast('success', 'Panel expanded', 2000);
+            break;
+
+          case 'settings':
+            this.showPanelSettings(panelId);
+            break;
+
+          case 'duplicate':
+            // TODO: Implement panel duplication
+            this.showToast('info', 'Duplicate feature coming soon', 2000);
+            break;
+
+          case 'remove':
+            await wasm.remove_panel(panelId);
+            this.showToast('success', 'Panel removed', 2000);
+            break;
+
+          default:
+            console.warn('Unknown panel action:', action);
+        }
+
+        // Refresh layout after action
+        await this.refresh();
+      } catch (err) {
+        console.error('Failed to execute panel action:', err);
+        this.showToast('error', `Failed to ${action} panel`);
+      }
+    }
+  }
+
+  // Initialize panel container
+  if (typeof window !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', () => {
+      const panelManager = new PanelContainerManager('panel-container');
+
+      // Expose to window for external access
+      (window as any).refreshPanels = () => panelManager.refresh();
+      (window as any).saveLayout = (name: string) => {
+        const wasm = (window as any).getWasm?.();
+        if (wasm) {
+          wasm.get_panel_layout().then((layoutJson: string) => {
+            return layoutStorage.saveLayout(name, layoutJson, false);
+          }).then((id: string) => {
+            (window as any).showToast?.('success', `Layout "${name}" saved`);
+            return id;
+          }).catch((err: Error) => {
+            console.error('Failed to save layout:', err);
+            (window as any).showToast?.('error', 'Failed to save layout');
+          });
+        }
+      };
+      (window as any).loadLayout = async (id: string) => {
+        try {
+          const saved = await layoutStorage.loadLayout(id);
+          if (!saved) {
+            throw new Error('Layout not found');
+          }
+          const wasm = (window as any).getWasm?.();
+          if (wasm) {
+            await wasm.restore_panel_layout(saved.layout);
+            await panelManager.refresh();
+            (window as any).showToast?.('success', `Layout "${saved.name}" loaded`);
+          }
+        } catch (err) {
+          console.error('Failed to load layout:', err);
+          (window as any).showToast?.('error', 'Failed to load layout');
+        }
+      };
+
+      // Task 6.1: Initialize layout storage and restore
+      panelManager.initializeLayout().catch(console.error);
+
+      // Initial render when WASM is ready
+      window.addEventListener('wasmReady', () => {
+        panelManager.refresh();
+      });
+    });
+  }
+</script>

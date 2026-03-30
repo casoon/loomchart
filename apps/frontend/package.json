@@ -1,0 +1,30 @@
+{
+  "name": "@loom/frontend",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "typecheck": "astro check && tsc --noEmit"
+  },
+  "dependencies": {
+    "@alpinejs/persist": "^3.13.0",
+    "@loom/chart-wrapper": "workspace:*",
+    "@loom/shared": "workspace:*",
+    "alpinejs": "^3.13.0",
+    "astro": "^4.0.0",
+    "phoenix": "^1.8.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.3.0",
+    "@astrojs/tailwind": "^5.0.0",
+    "@types/alpinejs": "^3.13.0",
+    "autoprefixer": "^10.4.16",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0"
+  }
+}

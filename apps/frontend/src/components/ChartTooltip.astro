@@ -1,0 +1,111 @@
+---
+// Chart Tooltip - Shows OHLC data on hover
+---
+
+<div id="chart-tooltip" class="chart-tooltip hidden">
+  <div class="tooltip-header">
+    <span id="tooltip-time" class="tooltip-time"></span>
+  </div>
+  <div class="tooltip-body">
+    <div class="tooltip-row">
+      <span class="tooltip-label">O</span>
+      <span id="tooltip-open" class="tooltip-value"></span>
+    </div>
+    <div class="tooltip-row">
+      <span class="tooltip-label">H</span>
+      <span id="tooltip-high" class="tooltip-value tooltip-high"></span>
+    </div>
+    <div class="tooltip-row">
+      <span class="tooltip-label">L</span>
+      <span id="tooltip-low" class="tooltip-value tooltip-low"></span>
+    </div>
+    <div class="tooltip-row">
+      <span class="tooltip-label">C</span>
+      <span id="tooltip-close" class="tooltip-value"></span>
+    </div>
+    <div class="tooltip-row tooltip-volume">
+      <span class="tooltip-label">Vol</span>
+      <span id="tooltip-volume" class="tooltip-value"></span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .chart-tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    background: rgba(15, 20, 25, 0.95);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: #e5e7eb;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    min-width: 140px;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.15s ease;
+  }
+
+  .chart-tooltip.hidden {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .tooltip-header {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+  }
+
+  .tooltip-time {
+    color: #9ca3af;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .tooltip-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .tooltip-label {
+    color: #6b7280;
+    font-weight: 600;
+    min-width: 18px;
+  }
+
+  .tooltip-value {
+    color: #e5e7eb;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .tooltip-high {
+    color: #22c55e;
+  }
+
+  .tooltip-low {
+    color: #ef4444;
+  }
+
+  .tooltip-volume {
+    margin-top: 2px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(75, 85, 99, 0.3);
+  }
+
+  .tooltip-volume .tooltip-value {
+    color: #9ca3af;
+    font-size: 10px;
+  }
+</style>

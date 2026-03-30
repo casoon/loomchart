@@ -1,0 +1,326 @@
+---
+// EntropyOverlay.astro
+// Displays entropy indicators as overlays on the chart
+---
+
+<div id="entropy-overlay" class="entropy-overlay hidden">
+  <div class="entropy-values">
+    <div id="shannon-entropy-display" class="entropy-item">
+      <span class="entropy-label">Shannon:</span>
+      <span class="entropy-value">--</span>
+      <div class="entropy-bar">
+        <div class="entropy-bar-fill shannon"></div>
+      </div>
+    </div>
+
+    <div id="lempel-ziv-display" class="entropy-item">
+      <span class="entropy-label">Lempel-Ziv:</span>
+      <span class="entropy-value">--</span>
+      <div class="entropy-bar">
+        <div class="entropy-bar-fill lempel-ziv"></div>
+      </div>
+    </div>
+
+    <div id="permutation-entropy-display" class="entropy-item">
+      <span class="entropy-label">Permutation:</span>
+      <span class="entropy-value">--</span>
+      <div class="entropy-bar">
+        <div class="entropy-bar-fill permutation"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .entropy-overlay {
+    position: absolute;
+    top: 60px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 12px;
+    min-width: 200px;
+    z-index: 1000;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .entropy-overlay.hidden {
+    display: none;
+  }
+
+  .entropy-values {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .entropy-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .entropy-label {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .entropy-value {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+  }
+
+  .entropy-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .entropy-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    border-radius: 3px;
+  }
+
+  .entropy-bar-fill.shannon {
+    background: linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%);
+  }
+
+  .entropy-bar-fill.lempel-ziv {
+    background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+  }
+
+  .entropy-bar-fill.permutation {
+    background: linear-gradient(90deg, #06b6d4 0%, #f59e0b 50%, #dc2626 100%);
+  }
+
+  /* Color states based on value */
+  .entropy-value.low {
+    color: #22c55e;
+  }
+
+  .entropy-value.medium {
+    color: #eab308;
+  }
+
+  .entropy-value.high {
+    color: #ef4444;
+  }
+</style>
+
+<script>
+  import type { IndicatorInstance } from '../lib/indicators/types';
+
+  interface EntropyValues {
+    shannon: number | null;
+    lempelZiv: number | null;
+    permutation: number | null;
+  }
+
+  class EntropyOverlayController {
+    private overlay: HTMLElement;
+    private shannonDisplay: HTMLElement;
+    private lempelZivDisplay: HTMLElement;
+    private permutationDisplay: HTMLElement;
+    private activeIndicators: Map<string, IndicatorInstance> = new Map();
+    private values: EntropyValues = {
+      shannon: null,
+      lempelZiv: null,
+      permutation: null
+    };
+
+    constructor() {
+      this.overlay = document.getElementById('entropy-overlay')!;
+      this.shannonDisplay = document.getElementById('shannon-entropy-display')!;
+      this.lempelZivDisplay = document.getElementById('lempel-ziv-display')!;
+      this.permutationDisplay = document.getElementById('permutation-entropy-display')!;
+
+      this.setupEventListeners();
+    }
+
+    private setupEventListeners(): void {
+      // Listen for indicator additions/removals
+      window.addEventListener('indicator-added', ((event: CustomEvent) => {
+        const { instance } = event.detail;
+        this.addIndicator(instance);
+      }) as EventListener);
+
+      window.addEventListener('indicator-removed', ((event: CustomEvent) => {
+        const { instanceId } = event.detail;
+        this.removeIndicator(instanceId);
+      }) as EventListener);
+
+      // Listen for indicator updates
+      window.addEventListener('indicator-updated', ((event: CustomEvent) => {
+        const { instanceId, value } = event.detail;
+        this.updateIndicatorValue(instanceId, value);
+      }) as EventListener);
+
+      // Listen for candle updates to recalculate
+      window.addEventListener('candle-added', (() => {
+        this.recalculateAll();
+      }) as EventListener);
+    }
+
+    private addIndicator(instance: IndicatorInstance): void {
+      this.activeIndicators.set(instance.instanceId, instance);
+
+      // Check if this is an entropy indicator
+      if (instance.metadata.id === 'shannon_entropy' ||
+          instance.metadata.id === 'lempel_ziv' ||
+          instance.metadata.id === 'permutation_entropy') {
+        this.show();
+      }
+    }
+
+    private removeIndicator(instanceId: string): void {
+      const instance = this.activeIndicators.get(instanceId);
+      if (!instance) return;
+
+      this.activeIndicators.delete(instanceId);
+
+      // Clear the corresponding value
+      if (instance.metadata.id === 'shannon_entropy') {
+        this.values.shannon = null;
+      } else if (instance.metadata.id === 'lempel_ziv') {
+        this.values.lempelZiv = null;
+      } else if (instance.metadata.id === 'permutation_entropy') {
+        this.values.permutation = null;
+      }
+
+      // Hide overlay if no entropy indicators remain
+      const hasEntropyIndicators = Array.from(this.activeIndicators.values()).some(
+        inst => inst.metadata.category === 'Scientific'
+      );
+
+      if (!hasEntropyIndicators) {
+        this.hide();
+      } else {
+        this.render();
+      }
+    }
+
+    private updateIndicatorValue(instanceId: string, value: number | null): void {
+      const instance = this.activeIndicators.get(instanceId);
+      if (!instance) return;
+
+      // Update the corresponding entropy value
+      if (instance.metadata.id === 'shannon_entropy') {
+        this.values.shannon = value;
+      } else if (instance.metadata.id === 'lempel_ziv') {
+        this.values.lempelZiv = value;
+      } else if (instance.metadata.id === 'permutation_entropy') {
+        this.values.permutation = value;
+      }
+
+      this.render();
+    }
+
+    private recalculateAll(): void {
+      // Trigger recalculation of all active indicators
+      // This will be called by the chart when new data arrives
+      this.activeIndicators.forEach(instance => {
+        if (instance.lastValue !== null) {
+          this.updateIndicatorValue(instance.instanceId, instance.lastValue);
+        }
+      });
+    }
+
+    private render(): void {
+      this.updateEntropyItem(
+        this.shannonDisplay,
+        'shannon',
+        this.values.shannon
+      );
+
+      this.updateEntropyItem(
+        this.lempelZivDisplay,
+        'lempel-ziv',
+        this.values.lempelZiv
+      );
+
+      this.updateEntropyItem(
+        this.permutationDisplay,
+        'permutation',
+        this.values.permutation
+      );
+    }
+
+    private updateEntropyItem(
+      element: HTMLElement,
+      type: string,
+      value: number | null
+    ): void {
+      const valueSpan = element.querySelector('.entropy-value') as HTMLElement;
+      const barFill = element.querySelector('.entropy-bar-fill') as HTMLElement;
+
+      if (value === null) {
+        valueSpan.textContent = '--';
+        valueSpan.className = 'entropy-value';
+        barFill.style.width = '0%';
+      } else {
+        // Format value to 4 decimal places
+        valueSpan.textContent = value.toFixed(4);
+
+        // Apply color class based on value
+        valueSpan.className = 'entropy-value';
+        if (value < 0.4) {
+          valueSpan.classList.add('low');
+        } else if (value < 0.7) {
+          valueSpan.classList.add('medium');
+        } else {
+          valueSpan.classList.add('high');
+        }
+
+        // Update bar fill width (value is 0-1 normalized)
+        barFill.style.width = `${value * 100}%`;
+      }
+    }
+
+    public show(): void {
+      this.overlay.classList.remove('hidden');
+    }
+
+    public hide(): void {
+      this.overlay.classList.add('hidden');
+    }
+
+    public updatePosition(x: number, y: number): void {
+      this.overlay.style.left = `${x}px`;
+      this.overlay.style.top = `${y}px`;
+    }
+
+    public getValues(): EntropyValues {
+      return { ...this.values };
+    }
+  }
+
+  // Initialize the overlay controller
+  let overlayController: EntropyOverlayController;
+
+  // Wait for DOM to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      overlayController = new EntropyOverlayController();
+      (window as any).entropyOverlay = overlayController;
+    });
+  } else {
+    overlayController = new EntropyOverlayController();
+    (window as any).entropyOverlay = overlayController;
+  }
+
+  // Export for use in other modules
+  export { EntropyOverlayController };
+</script>

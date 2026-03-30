@@ -1,0 +1,25 @@
+[package]
+name = "loom-backtest"
+version = "0.1.0"
+edition = "2021"
+description = "Backtesting engine for Loom trading platform"
+license = "MIT"
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde", "loom-core/serde", "loom-indicators/serde"]
+parallel = ["rayon"]
+full = ["serde", "parallel"]
+
+[dependencies]
+loom-core = { path = "../core" }
+loom-indicators = { path = "../indicators", features = ["full"] }
+loom-signals = { path = "../signals" }
+loom-risk = { path = "../risk" }
+serde = { version = "1.0", features = ["derive"], optional = true }
+rayon = { version = "1.8", optional = true }
+chrono = "0.4"
+
+[dev-dependencies]
+loom-data = { path = "../data", features = ["full"] }
