@@ -1,38 +1,45 @@
-# Deploy to Cloudflare Pages
+# Deploy to Cloudflare Workers
 
-The demo is a fully static Astro app — no server required.
+The demo is deployed as a Cloudflare Worker with static asset binding.
+Deployment is manual via `wrangler`.
 
-## Cloudflare Pages Setup
-
-1. Connect your `casoon/loomchart` GitHub repo to Cloudflare Pages
-2. Use these build settings:
-
-   | Setting | Value |
-   |---------|-------|
-   | Framework preset | Astro |
-   | Build command | `cd apps/demo && npm install && npm run build` |
-   | Build output directory | `apps/demo/dist` |
-   | Root directory | *(leave blank — repo root)* |
-
-3. Deploy — the WASM binaries are pre-built and committed in `public/wasm/`,
-   so no Rust toolchain is needed on the build machine.
-
-## Local Preview
+## First-time setup
 
 ```bash
 cd apps/demo
 pnpm install
-pnpm dev        # http://localhost:4322
-pnpm build      # produces dist/
-pnpm preview    # serve dist/ locally
+
+# Log in with joern.seidel@casoon.de
+npx wrangler login
+```
+
+## Deploy
+
+```bash
+cd apps/demo
+pnpm deploy       # runs: astro build && wrangler deploy
+```
+
+The Worker is named `loomchart-demo` (see `wrangler.toml`).
+After deploy, it is live at `https://loomchart-demo.<your-subdomain>.workers.dev`.
+
+To use a custom domain, add a route in the Cloudflare dashboard:
+**Workers & Pages → loomchart-demo → Settings → Domains & Routes**
+
+## Local preview
+
+```bash
+cd apps/demo
+pnpm dev          # Astro dev server — http://localhost:4322
+pnpm build        # produces dist/
+pnpm preview      # serve dist/ locally via Astro
 ```
 
 ## Updating the WASM
 
-When the chart engine is rebuilt, copy the fresh binaries:
+When the chart engine is rebuilt, copy the fresh binaries and redeploy:
 
 ```bash
 cp -r apps/frontend/public/wasm/. apps/demo/public/wasm/
+cd apps/demo && pnpm deploy
 ```
-
-Then commit and push — Cloudflare Pages will redeploy automatically.
