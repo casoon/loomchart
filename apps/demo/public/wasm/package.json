@@ -1,0 +1,21 @@
+{
+  "name": "trading-ui",
+  "type": "module",
+  "collaborators": [
+    "Loom Team"
+  ],
+  "description": "WASM core for Loom trading UI",
+  "version": "0.1.0",
+  "files": [
+    "trading_ui_bg.wasm",
+    "trading_ui.js",
+    "trading_ui.d.ts",
+    "LICENSE-COMMERCIAL",
+    "LICENSE-AGPL"
+  ],
+  "main": "trading_ui.js",
+  "types": "trading_ui.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

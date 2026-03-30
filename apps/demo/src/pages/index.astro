@@ -1,0 +1,363 @@
+---
+import { CANDLE_DATA } from "../lib/candles";
+
+const timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"];
+const defaultTf = "1h";
+
+// Serialise at build time — browser gets a static JSON blob
+const candleData = JSON.stringify(CANDLE_DATA);
+
+// Last candle for seeding the live simulation
+const lastCandle = CANDLE_DATA[defaultTf].at(-1)!;
+const lastCandleJson = JSON.stringify(lastCandle);
+---
+
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LoomChart Demo</title>
+    <meta
+      name="description"
+      content="LoomChart — High-performance real-time trading charts powered by Rust & WebAssembly."
+    />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; background: #0d1117; color: #e6edf3; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; overflow: hidden; }
+      .tf-btn { transition: background 0.15s, color 0.15s; }
+      .tf-btn.active { background: #1f6feb; color: #fff; }
+      .ohlcv-up { color: #3fb950; }
+      .ohlcv-down { color: #f85149; }
+      #chart-container { position: relative; }
+      .pulse { animation: pulse 2s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
+  </head>
+
+  <body class="h-full flex flex-col" x-data="demoApp()" x-init="init()">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="flex items-center gap-3 px-4 h-11 border-b border-[#30363d] bg-[#161b22] shrink-0 select-none">
+
+      <!-- Brand -->
+      <span class="font-semibold text-[#58a6ff] text-sm tracking-wide">LoomChart</span>
+      <span class="text-[#30363d]">|</span>
+
+      <!-- Symbol -->
+      <span class="text-[#e6edf3] text-sm font-medium">BTC / USD</span>
+      <span class="text-[#30363d]">|</span>
+
+      <!-- Timeframe buttons -->
+      <div class="flex gap-1">
+        {timeframes.map((tf) => (
+          <button
+            class={`tf-btn px-2 py-0.5 rounded text-xs font-medium text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] ${tf === defaultTf ? "active" : ""}`}
+            x-on:click={`switchTimeframe('${tf}')`}
+            x-bind:class={`activeTf === '${tf}' ? 'active' : ''`}
+          >
+            {tf}
+          </button>
+        ))}
+      </div>
+
+      <span class="text-[#30363d]">|</span>
+
+      <!-- OHLCV crosshair display -->
+      <div class="flex items-center gap-3 text-xs" x-show="ohlcv.open !== null">
+        <span>O <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.open)"></span></span>
+        <span>H <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.high)"></span></span>
+        <span>L <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.low)"></span></span>
+        <span>C <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.close)"></span></span>
+        <span class="text-[#8b949e]">V <span x-text="fmtVol(ohlcv.volume)"></span></span>
+      </div>
+
+      <!-- Spacer -->
+      <div class="flex-1"></div>
+
+      <!-- Simulation toggle -->
+      <button
+        class="flex items-center gap-1.5 px-3 py-1 rounded text-xs border border-[#30363d] hover:border-[#58a6ff] transition-colors"
+        x-on:click="toggleSim()"
+        x-bind:class="simRunning ? 'border-[#3fb950] text-[#3fb950]' : 'text-[#8b949e]'"
+      >
+        <span x-show="simRunning" class="w-1.5 h-1.5 rounded-full bg-[#3fb950] pulse inline-block"></span>
+        <span x-show="!simRunning" class="w-1.5 h-1.5 rounded-full bg-[#8b949e] inline-block"></span>
+        <span x-text="simRunning ? 'Live' : 'Simulate'"></span>
+      </button>
+
+      <!-- Demo badge -->
+      <span class="px-2 py-0.5 rounded-full text-xs bg-[#30363d] text-[#8b949e]">synthetic data</span>
+
+      <!-- GitHub link -->
+      <a
+        href="https://github.com/casoon/loomchart"
+        target="_blank"
+        rel="noopener"
+        class="flex items-center gap-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors ml-1"
+        title="View on GitHub"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub
+      </a>
+    </header>
+
+    <!-- ── Chart ───────────────────────────────────────────── -->
+    <main class="flex-1 relative overflow-hidden">
+
+      <!-- Loading overlay -->
+      <div
+        x-show="loading"
+        x-transition:leave="transition-opacity duration-300"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0d1117]"
+      >
+        <svg class="animate-spin w-8 h-8 text-[#58a6ff]" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <span class="text-sm text-[#8b949e]">Loading chart engine…</span>
+      </div>
+
+      <!-- Chart container -->
+      <div id="chart-container" class="w-full h-full"></div>
+    </main>
+
+    <!-- Alpine + WASM scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+
+    <script define:vars={{ candleData, defaultTf, lastCandleJson }}>
+      // ── Candle data injected at build time ──────────────────
+      const ALL_CANDLES = JSON.parse(candleData);
+      const SEED_CANDLE = JSON.parse(lastCandleJson);
+
+      const TF_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+
+      // Simple seeded RNG for live simulation continuations
+      let simSeed = 99999;
+      function simRand() {
+        simSeed = (Math.imul(1664525, simSeed) + 1013904223) | 0;
+        return (simSeed >>> 0) / 0x100000000;
+      }
+
+      // ── Minimal WASM chart wrapper ──────────────────────────
+      class DemoChart {
+        constructor(container) {
+          this.container = container;
+          this.wasm = null;
+          this.chart = null;
+          this.rafId = null;
+          this.onCrosshair = null;
+        }
+
+        async init(timeframe) {
+          const mod = await import("/wasm/trading_ui.js");
+          await mod.default();
+          this._mod = mod;
+          this._createChart(timeframe);
+        }
+
+        _createChart(timeframe) {
+          if (this.chart) {
+            try { this.chart.free?.(); } catch (_) {}
+          }
+          if (this.rafId) cancelAnimationFrame(this.rafId);
+
+          const w = this.container.clientWidth;
+          const h = this.container.clientHeight;
+
+          this.chart = new this._mod.WasmChart(w, h, timeframe);
+
+          // Remove old canvas if present
+          const old = this.container.querySelector("canvas");
+          if (old) old.remove();
+
+          // Create and attach fresh canvas
+          this.canvas = document.createElement("canvas");
+          this.canvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;";
+          this.container.appendChild(this.canvas);
+          this.chart.attachCanvas(this.canvas);
+
+          this._bindEvents();
+          this._startLoop();
+
+          new ResizeObserver(() => {
+            const w = this.container.clientWidth;
+            const h = this.container.clientHeight;
+            if (this.chart) this.chart.resize(w, h);
+          }).observe(this.container);
+        }
+
+        setCandles(candles) {
+          if (!this.chart) return;
+          this.chart.setCandles(JSON.stringify(candles));
+          this.chart.fitToData();
+        }
+
+        addCandle(c) {
+          if (!this.chart) return;
+          this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v);
+        }
+
+        switchTimeframe(tf) {
+          this._createChart(tf);
+        }
+
+        _bindEvents() {
+          const el = this.canvas;
+          const c = this.chart;
+
+          el.addEventListener("mousemove", (e) => {
+            const r = el.getBoundingClientRect();
+            c.onMouseMove(e.clientX - r.left, e.clientY - r.top);
+            const info = c.getCrosshairInfo?.();
+            if (info && this.onCrosshair) this.onCrosshair(info);
+          });
+          el.addEventListener("mouseleave", () => {
+            if (this.onCrosshair) this.onCrosshair(null);
+          });
+          el.addEventListener("mousedown", (e) => {
+            const r = el.getBoundingClientRect();
+            c.onMouseDown(e.clientX - r.left, e.clientY - r.top, e.button);
+          });
+          el.addEventListener("mouseup", (e) => {
+            const r = el.getBoundingClientRect();
+            c.onMouseUp(e.clientX - r.left, e.clientY - r.top, e.button);
+          });
+          el.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const r = el.getBoundingClientRect();
+            c.onMouseWheel(e.clientX - r.left, e.clientY - r.top, e.deltaY);
+          }, { passive: false });
+          el.addEventListener("dblclick", (e) => {
+            const r = el.getBoundingClientRect();
+            c.onDoubleClick?.(e.clientX - r.left, e.clientY - r.top);
+          });
+
+          // Touch
+          el.addEventListener("touchstart", (e) => {
+            const t = e.touches[0]; const r = el.getBoundingClientRect();
+            c.onTouchStart?.(t.clientX - r.left, t.clientY - r.top);
+          }, { passive: true });
+          el.addEventListener("touchmove", (e) => {
+            const t = e.touches[0]; const r = el.getBoundingClientRect();
+            c.onTouchMove?.(t.clientX - r.left, t.clientY - r.top);
+          }, { passive: true });
+          el.addEventListener("touchend", () => c.onTouchEnd?.());
+        }
+
+        _startLoop() {
+          const loop = () => {
+            if (this.chart) this.chart.render();
+            this.rafId = requestAnimationFrame(loop);
+          };
+          this.rafId = requestAnimationFrame(loop);
+        }
+      }
+
+      // ── Alpine component ────────────────────────────────────
+      document.addEventListener("alpine:init", () => {
+        Alpine.data("demoApp", () => ({
+          loading: true,
+          activeTf: defaultTf,
+          simRunning: false,
+          simInterval: null,
+          simLastCandle: { ...SEED_CANDLE },
+          ohlcv: { open: null, high: null, low: null, close: null, volume: null, dir: "" },
+          chart: null,
+
+          async init() {
+            this.chart = new DemoChart(document.getElementById("chart-container"));
+            this.chart.onCrosshair = (info) => this._updateOhlcv(info);
+
+            await this.chart.init(this.activeTf);
+            this.chart.setCandles(ALL_CANDLES[this.activeTf]);
+            this.loading = false;
+          },
+
+          switchTimeframe(tf) {
+            if (tf === this.activeTf) return;
+            this.activeTf = tf;
+            this.stopSim();
+            this.chart.switchTimeframe(tf);
+            this.chart.setCandles(ALL_CANDLES[tf]);
+            // Reset sim seed candle to last candle of this timeframe
+            const candles = ALL_CANDLES[tf];
+            this.simLastCandle = { ...candles[candles.length - 1] };
+          },
+
+          toggleSim() {
+            this.simRunning ? this.stopSim() : this.startSim();
+          },
+
+          startSim() {
+            this.simRunning = true;
+            const tfSec = TF_SECONDS[this.activeTf] || 3600;
+
+            this.simInterval = setInterval(() => {
+              const prev = this.simLastCandle;
+              const price = prev.c;
+              const vol = price * (0.005 + simRand() * 0.006);
+              const body = (simRand() - 0.49) * vol;
+              const open = price;
+              const close = Math.max(1000, open + body);
+              const wick = simRand() * Math.abs(body) * 0.6;
+              const high = Math.max(open, close) + wick;
+              const low = Math.min(open, close) - wick * simRand();
+              const volume = Math.max(10, 200 + simRand() * 400);
+
+              const candle = {
+                time: prev.time + tfSec,
+                o: Math.round(open * 100) / 100,
+                h: Math.round(high * 100) / 100,
+                l: Math.round(Math.max(1000, low) * 100) / 100,
+                c: Math.round(close * 100) / 100,
+                v: Math.round(volume * 10) / 10,
+              };
+
+              this.chart.addCandle(candle);
+              this.simLastCandle = candle;
+            }, 1500);
+          },
+
+          stopSim() {
+            this.simRunning = false;
+            clearInterval(this.simInterval);
+          },
+
+          _updateOhlcv(info) {
+            if (!info) {
+              this.ohlcv.open = null;
+              return;
+            }
+            const v = typeof info === "string" ? JSON.parse(info) : info;
+            const ohlcv = v?.ohlcv ?? v;
+            if (!ohlcv) return;
+            this.ohlcv = {
+              open: ohlcv.open ?? ohlcv.o,
+              high: ohlcv.high ?? ohlcv.h,
+              low: ohlcv.low ?? ohlcv.l,
+              close: ohlcv.close ?? ohlcv.c,
+              volume: ohlcv.volume ?? ohlcv.v,
+              dir: (ohlcv.close ?? ohlcv.c) >= (ohlcv.open ?? ohlcv.o) ? "ohlcv-up" : "ohlcv-down",
+            };
+          },
+
+          fmt(v) {
+            if (v == null) return "—";
+            return Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          },
+
+          fmtVol(v) {
+            if (v == null) return "—";
+            if (v >= 1000) return (v / 1000).toFixed(1) + "K";
+            return Number(v).toFixed(0);
+          },
+        }));
+      });
+    </script>
+  </body>
+</html>
