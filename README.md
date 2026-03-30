@@ -1,5 +1,7 @@
 # LoomChart
 
+> **Alpha** — actively developed, APIs and features may change without notice.
+
 A high-performance, real-time trading chart platform built with Rust, WebAssembly, and Astro. LoomChart delivers 60fps candlestick rendering, 70+ technical indicators, and professional drawing tools — all running natively in the browser via WASM.
 
 **[Live Demo](https://loomchart.pages.dev)** — runs entirely in the browser with synthetic data, no backend required.
