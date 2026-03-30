@@ -17,7 +17,7 @@ npx wrangler login
 
 ```bash
 cd apps/demo
-pnpm deploy       # runs: astro build && wrangler deploy
+pnpm cf:deploy    # runs: astro build && wrangler deploy
 ```
 
 The Worker is named `loomchart-demo` (see `wrangler.toml`).

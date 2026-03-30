@@ -7,7 +7,7 @@
     "dev": "astro dev --port 4322",
     "build": "astro build",
     "preview": "astro preview",
-    "deploy": "astro build && wrangler deploy"
+    "cf:deploy": "astro build && wrangler deploy"
   },
   "dependencies": {
     "astro": "^6.0.0"
