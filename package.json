@@ -4,6 +4,7 @@
   "private": true,
   "description": "Realtime Trading UI - Monorepo",
   "scripts": {
+    "prepare": "husky",
     "dev": "pnpm run build:packages && pnpm --filter @loom/frontend run dev",
     "build": "pnpm -r run build",
     "build:packages": "pnpm --filter @loom/shared --filter @loom/chart-core --filter @loom/chart-wrapper run build",
@@ -17,7 +18,9 @@
     "db:migrate": "cd apps/phoenix && mix ecto.migrate"
   },
   "devDependencies": {
+    "@casoon/nosecrets": "^0.3.7",
     "@types/node": "^20.10.0",
+    "husky": "^9.0.0",
     "typescript": "^5.3.0"
   },
   "engines": {
