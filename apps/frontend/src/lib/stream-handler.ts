@@ -81,12 +81,13 @@ export class StreamHandler {
       console.log("[StreamHandler] New candle detected:", new Date(roundedTime * 1000).toISOString());
       this.currentCandle = candle;
     } else {
-      // Update existing candle
+      // Update existing candle — capture ref before reassignment to preserve narrowing
+      const prev = this.currentCandle;
       this.currentCandle = {
         time: roundedTime,
-        o: this.currentCandle.o, // Keep original open
-        h: Math.max(this.currentCandle.h, candle.h),
-        l: Math.min(this.currentCandle.l, candle.l),
+        o: prev.o, // Keep original open
+        h: Math.max(prev.h, candle.h),
+        l: Math.min(prev.l, candle.l),
         c: candle.c,
         v: candle.v, // Use latest volume
       };

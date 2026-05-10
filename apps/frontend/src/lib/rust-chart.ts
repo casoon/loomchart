@@ -201,6 +201,34 @@ export class RustChart {
   }
 
   /**
+   * Toggle logarithmic price scale
+   */
+  setLogScale(enabled: boolean): void {
+    if (!this.wasmChart) return;
+    this.wasmChart.setLogScale(enabled);
+  }
+
+  isLogScale(): boolean {
+    return this.wasmChart?.isLogScale() ?? false;
+  }
+
+  /**
+   * Set chart theme (dark = true, light = false)
+   */
+  setTheme(dark: boolean): void {
+    if (!this.wasmChart) return;
+    this.wasmChart.setTheme(dark);
+  }
+
+  /**
+   * Set candle rendering style: candlestick | ohlc | hollow
+   */
+  setCandleStyle(style: "candlestick" | "ohlc" | "hollow"): void {
+    if (!this.wasmChart) return;
+    this.wasmChart.setCandleStyle(style);
+  }
+
+  /**
    * Get crosshair info
    */
   getCrosshairInfo(): CrosshairInfo | null {

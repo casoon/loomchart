@@ -45,6 +45,10 @@ export class WasmChart {
    */
   importState(json: string): void;
   /**
+   * Query current log scale mode
+   */
+  isLogScale(): boolean;
+  /**
    * Handle touch end
    */
   onTouchEnd(x: number, y: number): void;
@@ -68,6 +72,10 @@ export class WasmChart {
    * Apply time scaling - user is dragging on time axis
    */
   scaleTimeTo(x: number): void;
+  /**
+   * Toggle logarithmic price scale
+   */
+  setLogScale(enabled: boolean): void;
   /**
    * End time scaling - user released mouse
    */
@@ -164,6 +172,10 @@ export class WasmChart {
    * Get all tools as JSON
    */
   getTools(): string;
+  /**
+   * Switch between dark and light theme
+   */
+  setTheme(dark: boolean): void;
 }
 
 export class WasmLempelZivComplexity {
@@ -567,6 +579,7 @@ export interface InitOutput {
   readonly wasmchart_getViewportInfo: (a: number) => number;
   readonly wasmchart_importState: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_isDirty: (a: number) => number;
+  readonly wasmchart_isLogScale: (a: number) => number;
   readonly wasmchart_new: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly wasmchart_onDoubleClick: (a: number, b: number, c: number) => void;
   readonly wasmchart_onKeyDown: (a: number, b: number, c: number) => void;
@@ -587,6 +600,8 @@ export interface InitOutput {
   readonly wasmchart_scaleTimeTo: (a: number, b: number, c: number) => void;
   readonly wasmchart_setCandleStyle: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setCandles: (a: number, b: number, c: number, d: number) => void;
+  readonly wasmchart_setLogScale: (a: number, b: number) => void;
+  readonly wasmchart_setTheme: (a: number, b: number) => void;
   readonly wasmchart_startPriceScale: (a: number, b: number, c: number) => void;
   readonly wasmchart_startTimeScale: (a: number, b: number, c: number) => void;
   readonly wasmlempelzivcomplexity_calculate: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -605,9 +620,9 @@ export interface InitOutput {
   readonly wasmshannonentropy_next: (a: number, b: number) => number;
   readonly wasmshannonentropy_reset: (a: number) => void;
   readonly wasmchart_endTimeScale: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_356: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_92: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_357: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_366: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_109: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_365: (a: number, b: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export3: (a: number) => void;

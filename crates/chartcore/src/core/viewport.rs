@@ -41,6 +41,8 @@ pub struct Viewport {
     pub dimensions: Dimensions,
     /// Timeframe (for bar spacing)
     pub timeframe: Timeframe,
+    /// Use logarithmic price scale
+    pub log_scale: bool,
 }
 
 impl Viewport {
@@ -58,6 +60,7 @@ impl Viewport {
                 pixel_ratio: 1.0,
             },
             timeframe: Timeframe::M5,
+            log_scale: false,
         }
     }
 
@@ -141,20 +144,39 @@ impl Viewport {
 
     /// Convert price to y pixel coordinate
     pub fn price_to_y(&self, price: f64) -> f64 {
-        let p_min = self.price.min;
-        let p_max = self.price.max;
-
-        // Y is inverted (0 at top)
-        (p_max - price) / (p_max - p_min) * self.dimensions.height as f64
+        let h = self.dimensions.height as f64;
+        if self.log_scale {
+            let log_min = self.price.min.max(1e-10).ln();
+            let log_max = self.price.max.max(1e-10).ln();
+            let log_p = price.max(1e-10).ln();
+            (log_max - log_p) / (log_max - log_min) * h
+        } else {
+            // Y is inverted (0 at top)
+            (self.price.max - price) / (self.price.max - self.price.min) * h
+        }
     }
 
     /// Convert y pixel to price
     pub fn y_to_price(&self, y: f64) -> f64 {
-        let p_min = self.price.min;
-        let p_max = self.price.max;
+        let h = self.dimensions.height as f64;
+        if self.log_scale {
+            let log_min = self.price.min.max(1e-10).ln();
+            let log_max = self.price.max.max(1e-10).ln();
+            let frac = y / h;
+            (log_max - frac * (log_max - log_min)).exp()
+        } else {
+            // Y is inverted
+            self.price.max - (y / h) * (self.price.max - self.price.min)
+        }
+    }
 
-        // Y is inverted
-        p_max - (y / self.dimensions.height as f64) * (p_max - p_min)
+    /// Compute logarithmically-spaced price levels for grid lines (log scale only)
+    pub fn log_grid_prices(&self, num_lines: usize) -> Vec<f64> {
+        let log_min = self.price.min.max(1e-10).ln();
+        let log_max = self.price.max.max(1e-10).ln();
+        (0..=num_lines)
+            .map(|i| (log_min + i as f64 * (log_max - log_min) / num_lines as f64).exp())
+            .collect()
     }
 
     /// Get bar width in pixels

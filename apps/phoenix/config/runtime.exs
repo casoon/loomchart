@@ -33,4 +33,13 @@ if config_env() == :prod do
       port: port
     ],
     secret_key_base: secret_key_base
+
+  # Supabase JWT secret — required in production to authenticate WebSocket connections.
+  # Set SUPABASE_JWT_SECRET to the value from your Supabase project settings → API.
+  ws_auth_token =
+    System.get_env("SUPABASE_JWT_SECRET") ||
+      raise "environment variable SUPABASE_JWT_SECRET is missing"
+
+  config :loom, ws_auth_token: ws_auth_token
+  config :loom, allow_unauthenticated_ws: false
 end

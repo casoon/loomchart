@@ -257,6 +257,38 @@ impl WasmChart {
         Ok(())
     }
 
+    /// Toggle logarithmic price scale
+    #[wasm_bindgen(js_name = setLogScale)]
+    pub fn set_log_scale(&mut self, enabled: bool) {
+        self.state.viewport.log_scale = enabled;
+        self.state.mark_dirty();
+    }
+
+    /// Query current log scale mode
+    #[wasm_bindgen(js_name = isLogScale)]
+    pub fn is_log_scale(&self) -> bool {
+        self.state.viewport.log_scale
+    }
+
+    /// Switch between dark and light theme
+    #[wasm_bindgen(js_name = setTheme)]
+    pub fn set_theme(&mut self, dark: bool) {
+        use crate::primitives::Color;
+        let opts = &mut self.state.options;
+        if dark {
+            opts.background_color = Color::rgba(10, 14, 18, 1.0);
+            opts.grid_color = Color::rgba(45, 54, 64, 0.3);
+            opts.text_color = Color::rgba(231, 233, 234, 1.0);
+            opts.crosshair_color = Color::rgba(139, 152, 165, 0.5);
+        } else {
+            opts.background_color = Color::rgba(255, 255, 255, 1.0);
+            opts.grid_color = Color::rgba(180, 180, 180, 0.3);
+            opts.text_color = Color::rgba(20, 20, 20, 1.0);
+            opts.crosshair_color = Color::rgba(80, 80, 80, 0.5);
+        }
+        self.state.mark_dirty();
+    }
+
     /// Get crosshair position as JSON
     #[wasm_bindgen(js_name = getCrosshairInfo)]
     pub fn get_crosshair_info(&self) -> JsValue {
@@ -395,14 +427,19 @@ impl WasmChart {
             let grid_color = self.state.options.grid_color;
             let vp = &self.state.viewport;
 
-            // Draw horizontal grid lines (price levels)
-            let price_range = vp.price.max - vp.price.min;
+            // Draw horizontal grid lines — log-spaced when log scale is active
             let num_lines = 10;
-            let price_step = price_range / num_lines as f64;
+            let grid_prices: Vec<f64> = if vp.log_scale {
+                vp.log_grid_prices(num_lines)
+            } else {
+                let price_step = (vp.price.max - vp.price.min) / num_lines as f64;
+                (0..=num_lines)
+                    .map(|i| vp.price.min + i as f64 * price_step)
+                    .collect()
+            };
 
-            for i in 0..=num_lines {
-                let price = vp.price.min + (i as f64 * price_step);
-                let y = vp.price_to_y(price);
+            for price in &grid_prices {
+                let y = vp.price_to_y(*price);
                 renderer.draw_line(0.0, y, vp.dimensions.width as f64, y, grid_color, 1.0);
             }
 

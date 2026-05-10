@@ -474,7 +474,7 @@ impl ElliottAnalyzer {
 
     /// Calculate confidence score for impulse
     fn calculate_impulse_confidence(&self, waves: &[Wave]) -> f64 {
-        let mut score = 50.0; // Base score for valid pattern
+        let mut score: f64 = 50.0; // Base score for valid pattern
 
         // Wave 2 retracement (ideal: 50-61.8%)
         let w2_ret = waves[1].retracement_of(&waves[0]);
@@ -505,7 +505,7 @@ impl ElliottAnalyzer {
             score += 10.0;
         }
 
-        score.min(100.0)
+        score.min(100.0_f64)
     }
 
     /// Classify impulse pattern type
@@ -606,7 +606,7 @@ impl ElliottAnalyzer {
 
     /// Calculate confidence for ABC pattern
     fn calculate_abc_confidence(&self, waves: &[Wave]) -> f64 {
-        let mut score = 40.0;
+        let mut score: f64 = 40.0;
 
         // Wave B retracement (ideal: 50-61.8% of A)
         let b_ret = waves[1].retracement_of(&waves[0]);
@@ -622,7 +622,7 @@ impl ElliottAnalyzer {
             score += 10.0;
         }
 
-        score.min(100.0)
+        score.min(100.0_f64)
     }
 
     /// Get projected targets for current wave

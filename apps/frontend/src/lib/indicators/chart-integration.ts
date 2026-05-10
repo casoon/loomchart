@@ -211,7 +211,6 @@ export function removeIndicatorFromChart(instanceId: string): boolean {
   }
 
   integration.activeIndicators.delete(instanceId);
-  removeIndicator(instanceId);
 
   // Dispatch event
   window.dispatchEvent(
@@ -240,8 +239,9 @@ export function updateIndicatorConfig(
     return false;
   }
 
-  // Update the configuration
-  const updated = updateIndicator(instanceId, newConfig);
+  // Update the configuration in-place
+  instance.config = { ...instance.config, ...newConfig };
+  const updated = instance;
 
   if (updated) {
     // Recalculate values
@@ -460,7 +460,7 @@ export function exportIndicatorState(): any {
 /**
  * Import state from persistence
  */
-export function importIndicatorState(state: any): void {
+export async function importIndicatorState(state: any): Promise<void> {
   if (!state || state.version !== "1.0.0") {
     console.warn("[IndicatorIntegration] Invalid state version");
     return;
@@ -469,15 +469,15 @@ export function importIndicatorState(state: any): void {
   // Clear existing indicators
   clearAllIndicators();
 
-  // Restore indicators
-  state.indicators.forEach((saved: any) => {
-    const instance = addIndicatorToChart(saved.config);
+  // Restore indicators sequentially to preserve order
+  for (const saved of state.indicators) {
+    const instance = await addIndicatorToChart(saved.config);
 
     if (instance) {
       instance.values = saved.values || [];
       instance.lastValue = saved.lastValue;
     }
-  });
+  }
 
   console.log(
     "[IndicatorIntegration] Imported indicator state:",

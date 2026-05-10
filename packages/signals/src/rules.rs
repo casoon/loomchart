@@ -4,8 +4,10 @@
 
 use loom_core::{Price, Timestamp};
 
+#[cfg(feature = "std")]
+use std::sync::Arc;
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec::Vec, boxed::Box};
+use alloc::{string::String, vec::Vec, boxed::Box, sync::Arc};
 
 /// Signal type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +150,7 @@ impl Signal {
 }
 
 /// Condition for rules
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Condition {
     /// Value above threshold
     Above(f64),
@@ -164,8 +166,23 @@ pub enum Condition {
     Rising(usize),
     /// Decreasing for N periods
     Falling(usize),
-    /// Custom condition
-    Custom(Box<dyn Fn(f64, f64) -> bool + Send + Sync>),
+    /// Custom condition (stored in Arc for Clone support)
+    Custom(Arc<dyn Fn(f64, f64) -> bool + Send + Sync>),
+}
+
+impl core::fmt::Debug for Condition {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Above(v) => write!(f, "Above({v})"),
+            Self::Below(v) => write!(f, "Below({v})"),
+            Self::Between(lo, hi) => write!(f, "Between({lo}, {hi})"),
+            Self::CrossedAbove(v) => write!(f, "CrossedAbove({v})"),
+            Self::CrossedBelow(v) => write!(f, "CrossedBelow({v})"),
+            Self::Rising(n) => write!(f, "Rising({n})"),
+            Self::Falling(n) => write!(f, "Falling({n})"),
+            Self::Custom(_) => write!(f, "Custom(<fn>)"),
+        }
+    }
 }
 
 impl Condition {

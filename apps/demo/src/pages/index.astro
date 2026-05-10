@@ -5,10 +5,7 @@ import "../styles/global.css";
 const timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"];
 const defaultTf = "1h";
 
-// Serialise at build time — browser gets a static JSON blob
 const candleData = JSON.stringify(CANDLE_DATA);
-
-// Last candle for seeding the live simulation
 const lastCandle = CANDLE_DATA[defaultTf].at(-1)!;
 const lastCandleJson = JSON.stringify(lastCandle);
 ---
@@ -18,141 +15,327 @@ const lastCandleJson = JSON.stringify(lastCandle);
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LoomChart Demo</title>
-    <meta
-      name="description"
-      content="LoomChart — High-performance real-time trading charts powered by Rust & WebAssembly."
-    />
+    <title>LoomChart — Rust/WASM Trading Charts</title>
+    <meta name="description" content="LoomChart — High-performance real-time trading charts powered by Rust &amp; WebAssembly. 60fps rendering, no backend required." />
+    <meta property="og:title" content="LoomChart — Rust/WASM Trading Charts" />
+    <meta property="og:description" content="60fps candlestick charts running entirely in the browser via WebAssembly. No backend needed." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230d1117'/><rect x='5' y='18' width='4' height='9' rx='1' fill='%23f85149'/><rect x='6.5' y='14' width='1' height='5' rx='0.5' fill='%23f85149'/><rect x='6.5' y='26' width='1' height='3' rx='0.5' fill='%23f85149'/><rect x='13' y='12' width='4' height='10' rx='1' fill='%233fb950'/><rect x='14.5' y='8' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='14.5' y='21' width='1' height='4' rx='0.5' fill='%233fb950'/><rect x='21' y='8' width='4' height='12' rx='1' fill='%233fb950'/><rect x='22.5' y='4' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='22.5' y='19' width='1' height='5' rx='0.5' fill='%233fb950'/></svg>" />
+
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { height: 100%; background: #0d1117; color: #e6edf3; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; overflow: hidden; }
-      .tf-btn { transition: background 0.15s, color 0.15s; }
-      .tf-btn.active { background: #1f6feb; color: #fff; }
-      .ohlcv-up { color: #3fb950; }
-      .ohlcv-down { color: #f85149; }
-      #chart-container { position: relative; }
-      .pulse { animation: pulse 2s ease-in-out infinite; }
-      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+      html, body { height: 100%; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; overflow: hidden; }
+      body { background: var(--bg); color: var(--fg); }
+
+      body.dark  { --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --border:#30363d; --fg:#e6edf3; --muted:#8b949e; --dim:#484f58; --accent:#58a6ff; --up:#3fb950; --dn:#f85149; --badge:#30363d; }
+      body.light { --bg:#ffffff; --bg2:#f6f8fa; --bg3:#eaeef2; --border:#d0d7de; --fg:#1f2328; --muted:#656d76; --dim:#9ea7b3; --accent:#0969da; --up:#1a7f37; --dn:#cf222e; --badge:#eaeef2; }
+
+      /* Button base styles */
+      .btn { display:inline-flex; align-items:center; border:none; cursor:pointer; transition:background 0.12s, color 0.12s; font-family:inherit; }
+      .btn-ghost { background:transparent; color:var(--muted); border-radius:4px; }
+      .btn-ghost:hover { background:var(--border); color:var(--fg); }
+      .btn-ghost.active { background:var(--accent); color:#fff; }
+      .btn-ghost.active-up { background:rgba(63,185,80,0.15); color:var(--up); }
+      .btn-ghost.warn:hover { background:rgba(248,81,73,0.15); color:var(--dn); }
+
+      .tf-btn { font-size:11px; font-weight:500; padding:2px 7px; border-radius:3px; }
+      .ct-btn { font-size:11px; font-weight:500; padding:3px 9px; border-radius:3px; }
+      .scale-btn { font-size:11px; font-weight:600; padding:3px 9px; border-radius:3px; font-family:inherit; }
+      .icon-btn { font-size:12px; padding:3px 8px; border-radius:4px; }
+
+      .tool-btn {
+        width:34px; height:34px; align-items:center; justify-content:center;
+        border-radius:5px; cursor:pointer; color:var(--muted);
+        border:none; background:transparent; display:flex;
+      }
+      .tool-btn:hover { background:var(--border); color:var(--fg); }
+      .tool-btn.active { background:var(--accent); color:#fff; }
+      .tool-btn.warn:hover { background:rgba(248,81,73,0.15); color:var(--dn); }
+      .tool-sep { width:20px; height:1px; background:var(--border); margin:3px auto; }
+
+      .sep { width:1px; height:18px; background:var(--border); margin:0 4px; flex-shrink:0; }
+
+      .ohlcv-up { color:var(--up); }
+      .ohlcv-down { color:var(--dn); }
+
+      .pulse { animation:pulse 2s ease-in-out infinite; }
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+      /* Log scale overlay badge on chart */
+      #log-badge {
+        position:absolute; top:8px; left:8px; z-index:5;
+        font-size:10px; font-weight:700; letter-spacing:0.05em;
+        background:rgba(88,166,255,0.2); color:var(--accent);
+        border:1px solid rgba(88,166,255,0.3);
+        padding:2px 6px; border-radius:3px;
+        pointer-events:none;
+      }
+      #draw-hint {
+        position:absolute; bottom:8px; left:50%; transform:translateX(-50%); z-index:5;
+        font-size:11px; background:rgba(0,0,0,0.7); color:#fff;
+        padding:4px 12px; border-radius:12px; pointer-events:none;
+        white-space:nowrap;
+      }
     </style>
   </head>
 
-  <body class="h-full flex flex-col" x-data="demoApp()" x-init="init()">
+  <body class="dark h-full flex flex-col" x-data="demoApp()" x-init="init()">
 
-    <!-- ── Header ─────────────────────────────────────────── -->
-    <header class="flex items-center gap-3 px-4 h-11 border-b border-[#30363d] bg-[#161b22] shrink-0 select-none">
+    <!-- ── Row 1: Header (brand / symbol / timeframes / global) ── -->
+    <header class="flex items-center gap-2 px-3 shrink-0 border-b select-none"
+            style="height:42px;border-color:var(--border);background:var(--bg2)">
 
       <!-- Brand -->
-      <span class="font-semibold text-[#58a6ff] text-sm tracking-wide">LoomChart</span>
-      <span class="text-[#30363d]">|</span>
+      <span class="font-semibold text-sm" style="color:var(--accent);letter-spacing:.04em">LoomChart</span>
+      <div class="sep"></div>
 
-      <!-- Symbol -->
-      <span class="text-[#e6edf3] text-sm font-medium">BTC / USD</span>
-      <span class="text-[#30363d]">|</span>
+      <!-- Symbol + live price -->
+      <span class="text-sm font-medium" style="color:var(--fg)">BTC / USD</span>
+      <span class="text-sm font-semibold tabular-nums"
+            x-show="lastPrice !== null"
+            x-text="fmt(lastPrice)"
+            x-bind:class="priceDir === 'up' ? 'ohlcv-up' : priceDir === 'dn' ? 'ohlcv-down' : ''"
+            style="min-width:80px"></span>
+      <div class="sep"></div>
 
       <!-- Timeframe buttons -->
-      <div class="flex gap-1">
+      <div class="flex gap-0.5">
         {timeframes.map((tf) => (
           <button
-            class={`tf-btn px-2 py-0.5 rounded text-xs font-medium text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] ${tf === defaultTf ? "active" : ""}`}
+            class={`btn btn-ghost tf-btn ${tf === defaultTf ? "active" : ""}`}
             x-on:click={`switchTimeframe('${tf}')`}
             x-bind:class={`activeTf === '${tf}' ? 'active' : ''`}
-          >
-            {tf}
-          </button>
+          >{tf}</button>
         ))}
       </div>
 
-      <span class="text-[#30363d]">|</span>
-
-      <!-- OHLCV crosshair display -->
-      <div class="flex items-center gap-3 text-xs" x-show="ohlcv.open !== null">
-        <span>O <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.open)"></span></span>
-        <span>H <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.high)"></span></span>
-        <span>L <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.low)"></span></span>
-        <span>C <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.close)"></span></span>
-        <span class="text-[#8b949e]">V <span x-text="fmtVol(ohlcv.volume)"></span></span>
-      </div>
-
-      <!-- Spacer -->
       <div class="flex-1"></div>
 
-      <!-- Simulation toggle -->
+      <!-- Live simulation toggle -->
       <button
-        class="flex items-center gap-1.5 px-3 py-1 rounded text-xs border border-[#30363d] hover:border-[#58a6ff] transition-colors"
+        class="btn btn-ghost flex items-center gap-1.5 text-xs px-3 py-1 rounded border"
+        style="border-color:var(--border)"
         x-on:click="toggleSim()"
-        x-bind:class="simRunning ? 'border-[#3fb950] text-[#3fb950]' : 'text-[#8b949e]'"
+        x-bind:class="simRunning ? 'active-up' : ''"
+        x-bind:style="simRunning ? 'border-color:var(--up)' : 'border-color:var(--border)'"
       >
-        <span x-show="simRunning" class="w-1.5 h-1.5 rounded-full bg-[#3fb950] pulse inline-block"></span>
-        <span x-show="!simRunning" class="w-1.5 h-1.5 rounded-full bg-[#8b949e] inline-block"></span>
+        <span class="w-1.5 h-1.5 rounded-full inline-block"
+              x-bind:class="simRunning ? 'pulse' : ''"
+              x-bind:style="simRunning ? 'background:var(--up)' : 'background:var(--muted)'"></span>
         <span x-text="simRunning ? 'Live' : 'Simulate'"></span>
       </button>
 
       <!-- Badges -->
-      <span class="px-2 py-0.5 rounded-full text-xs bg-[#30363d] text-[#8b949e]">synthetic data</span>
-      <span class="px-2 py-0.5 rounded-full text-xs bg-[#3d1f00] text-[#e3b341] border border-[#e3b341]/30">alpha</span>
+      <span class="text-[10px] px-2 py-0.5 rounded-full" style="background:var(--badge);color:var(--muted)">synthetic</span>
+      <span class="text-[10px] px-2 py-0.5 rounded-full border" style="background:#3d1f00;color:#e3b341;border-color:rgba(227,179,65,0.3)">alpha</span>
 
-      <!-- GitHub link -->
-      <a
-        href="https://github.com/casoon/loomchart"
-        target="_blank"
-        rel="noopener"
-        class="flex items-center gap-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors ml-1"
-        title="View on GitHub"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <!-- Theme toggle -->
+      <button class="btn btn-ghost icon-btn"
+              x-on:click="toggleTheme()"
+              x-text="darkMode ? '☀' : '🌙'"
+              title="Toggle theme"></button>
+
+      <!-- GitHub -->
+      <a href="https://github.com/casoon/loomchart" target="_blank" rel="noopener"
+         class="btn btn-ghost icon-btn" title="GitHub">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
-        GitHub
       </a>
     </header>
 
-    <!-- ── Chart ───────────────────────────────────────────── -->
-    <main class="flex-1 relative overflow-hidden">
+    <!-- ── Row 2: Toolbar (chart controls / OHLCV) ───────────── -->
+    <div class="flex items-center gap-1 px-2 shrink-0 border-b select-none"
+         style="height:34px;border-color:var(--border);background:var(--bg2)">
 
-      <!-- Loading overlay -->
-      <div
-        x-show="loading"
-        x-transition:leave="transition-opacity duration-300"
-        x-transition:leave-start="opacity-100"
-        x-transition:leave-end="opacity-0"
-        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0d1117]"
-      >
-        <svg class="animate-spin w-8 h-8 text-[#58a6ff]" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      <!-- Chart type -->
+      <div class="flex gap-0.5">
+        {[
+          { id: "candlestick", label: "Candles" },
+          { id: "ohlc",        label: "OHLC" },
+          { id: "hollow",      label: "Hollow" },
+          { id: "ha",          label: "Heikin Ashi" },
+        ].map(({ id, label }) => (
+          <button
+            class="btn btn-ghost ct-btn"
+            x-on:click={`setChartType('${id}')`}
+            x-bind:class={`chartType === '${id}' ? 'active' : ''`}
+          >{label}</button>
+        ))}
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Fit to data -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="fitToData()"
+              title="Fit all data to view (F)">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8"/>
         </svg>
-        <span class="text-sm text-[#8b949e]">Loading chart engine…</span>
+        Fit
+      </button>
+
+      <!-- Log scale toggle — very visible when active -->
+      <button class="btn btn-ghost scale-btn"
+              x-on:click="toggleLogScale()"
+              x-bind:class="logScale ? 'active' : ''"
+              title="Toggle logarithmic price scale (L)">
+        <span x-text="logScale ? 'LOG ✓' : 'LOG'"></span>
+      </button>
+
+      <div class="sep"></div>
+
+      <!-- OHLCV crosshair info -->
+      <div class="flex items-center gap-2 text-[11px] tabular-nums" x-show="ohlcv.open !== null" style="color:var(--muted)">
+        <span>O <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.open)"></span></span>
+        <span>H <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.high)"></span></span>
+        <span>L <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.low)"></span></span>
+        <span>C <b x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.close)"></b></span>
+        <span>V <span x-text="fmtVol(ohlcv.volume)"></span></span>
+      </div>
+
+      <div class="flex-1"></div>
+
+      <!-- Keyboard hint -->
+      <span class="text-[10px]" style="color:var(--dim)">
+        <kbd class="px-1 rounded" style="background:var(--bg3)">F</kbd> fit &nbsp;
+        <kbd class="px-1 rounded" style="background:var(--bg3)">L</kbd> log &nbsp;
+        <kbd class="px-1 rounded" style="background:var(--bg3)">Esc</kbd> cancel draw
+      </span>
+    </div>
+
+    <!-- ── Chart area + left drawing toolbar ─────────────────── -->
+    <div class="flex flex-1 overflow-hidden">
+
+      <!-- Left drawing toolbar -->
+      <div class="flex flex-col items-center gap-1 py-2 shrink-0 border-r"
+           style="width:40px;background:var(--bg2);border-color:var(--border)">
+
+        <button class="tool-btn" title="Pointer — select &amp; pan (Esc)"
+                x-on:click="setDrawTool('pointer')"
+                x-bind:class="drawTool === 'pointer' ? 'active' : ''">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1l10 6-5 1-2 5z"/></svg>
+        </button>
+
+        <div class="tool-sep"></div>
+
+        <button class="tool-btn" title="Horizontal line — click to place"
+                x-on:click="setDrawTool('hline')"
+                x-bind:class="drawTool === 'hline' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="1" y1="8" x2="15" y2="8"/>
+            <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+
+        <button class="tool-btn" title="Vertical line — click to place"
+                x-on:click="setDrawTool('vline')"
+                x-bind:class="drawTool === 'vline' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="8" y1="1" x2="8" y2="15"/>
+            <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+
+        <button class="tool-btn" title="Trend line — click start, then end"
+                x-on:click="setDrawTool('trendline')"
+                x-bind:class="drawTool === 'trendline' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="2" y1="13" x2="14" y2="3"/>
+            <circle cx="2" cy="13" r="1.5" fill="currentColor" stroke="none"/>
+            <circle cx="14" cy="3" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+
+        <div class="tool-sep"></div>
+
+        <button class="tool-btn warn" title="Clear all drawings"
+                x-on:click="clearTools()">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="1.5" y1="1.5" x2="11.5" y2="11.5"/>
+            <line x1="11.5" y1="1.5" x2="1.5" y2="11.5"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Chart container -->
-      <div id="chart-container" class="w-full h-full"></div>
-    </main>
+      <div id="chart-container" class="relative overflow-hidden" style="flex:1">
 
-    <!-- Alpine + WASM scripts -->
+        <!-- Loading overlay -->
+        <div x-show="loading"
+             x-transition:leave="transition-opacity duration-300"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
+             style="background:var(--bg)">
+          <svg class="animate-spin w-8 h-8" style="color:var(--accent)" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <span class="text-sm" style="color:var(--muted)">Loading chart engine…</span>
+          <span class="text-xs" style="color:var(--dim)">Rust · WebAssembly · No backend</span>
+        </div>
+
+        <!-- Log scale badge (visible on chart when active) -->
+        <div id="log-badge" x-show="logScale && !loading">LOG</div>
+
+        <!-- Drawing hint overlay -->
+        <div id="draw-hint" x-show="drawTool !== 'pointer' && !loading">
+          <span x-text="drawHintText()"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Footer ────────────────────────────────────────────── -->
+    <footer class="flex items-center justify-between px-3 shrink-0 border-t text-[10px] select-none"
+            style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
+      <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
+      <span class="flex items-center gap-2">
+        <span>Drawing tools · 4 chart types · Log scale · Theme</span>
+        <span style="color:var(--border)">·</span>
+        <span style="color:var(--accent)">Rust + WebAssembly</span>
+      </span>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
 
     <script define:vars={{ candleData, defaultTf, lastCandleJson }}>
-      // ── Candle data injected at build time ──────────────────
       const ALL_CANDLES = JSON.parse(candleData);
       const SEED_CANDLE = JSON.parse(lastCandleJson);
+      const TF_SECONDS = { "1m":60, "5m":300, "15m":900, "1h":3600, "4h":14400, "1d":86400 };
 
-      const TF_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+      function toHeikinAshi(candles) {
+        const out = [];
+        for (let i = 0; i < candles.length; i++) {
+          const c = candles[i];
+          const hc = (c.o + c.h + c.l + c.c) / 4;
+          const ho = i === 0 ? (c.o + c.c) / 2 : (out[i-1].o + out[i-1].c) / 2;
+          out.push({ time:c.time, o:ho, h:Math.max(c.h,ho,hc), l:Math.min(c.l,ho,hc), c:hc, v:c.v });
+        }
+        return out;
+      }
 
-      // Simple seeded RNG for live simulation continuations
       let simSeed = 99999;
       function simRand() {
         simSeed = (Math.imul(1664525, simSeed) + 1013904223) | 0;
         return (simSeed >>> 0) / 0x100000000;
       }
 
-      // ── Minimal WASM chart wrapper ──────────────────────────
+      // ── Thin WASM chart wrapper ──────────────────────────────
       class DemoChart {
         constructor(container) {
           this.container = container;
-          this.wasm = null;
           this.chart = null;
+          this._mod = null;
           this.rafId = null;
           this.onCrosshair = null;
+          this._touchDist = null;
+          this._toolCount = 0;
+          this.drawingMode = null;
+          this._trendStart = null;
+          this.onDrawingPlaced = null;
         }
 
         async init(timeframe) {
@@ -163,200 +346,306 @@ const lastCandleJson = JSON.stringify(lastCandle);
         }
 
         _createChart(timeframe) {
-          if (this.chart) {
-            try { this.chart.free?.(); } catch (_) {}
-          }
+          if (this.chart) { try { this.chart.free?.(); } catch(_){} }
           if (this.rafId) cancelAnimationFrame(this.rafId);
+          if (this.canvas) this.canvas.remove();
 
-          const w = this.container.clientWidth;
-          const h = this.container.clientHeight;
-
+          // Use actual container size
+          const w = this.container.clientWidth  || 800;
+          const h = this.container.clientHeight || 500;
           this.chart = new this._mod.WasmChart(w, h, timeframe);
 
-          // Remove old canvas if present
-          const old = this.container.querySelector("canvas");
-          if (old) old.remove();
-
-          // Create and attach fresh canvas
           this.canvas = document.createElement("canvas");
           this.canvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;";
           this.container.appendChild(this.canvas);
           this.chart.attachCanvas(this.canvas);
-
           this._bindEvents();
           this._startLoop();
 
+          // Sync size once layout settles
+          requestAnimationFrame(() => {
+            if (this.chart) {
+              this.chart.resize(this.container.clientWidth, this.container.clientHeight);
+            }
+          });
+
           new ResizeObserver(() => {
-            const w = this.container.clientWidth;
-            const h = this.container.clientHeight;
-            if (this.chart) this.chart.resize(w, h);
+            if (this.chart) this.chart.resize(this.container.clientWidth, this.container.clientHeight);
           }).observe(this.container);
         }
 
-        setCandles(candles) {
-          if (!this.chart) return;
-          this.chart.setCandles(JSON.stringify(candles));
-          this.chart.fitToData();
+        _coords(e) {
+          const r = this.canvas.getBoundingClientRect();
+          return { x: e.clientX - r.left, y: e.clientY - r.top };
         }
 
-        addCandle(c) {
-          if (!this.chart) return;
-          this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v);
+        _crosshairInfo(x, y) {
+          if (!this.chart) return null;
+          this.chart.onMouseMove(x, y);
+          const raw = this.chart.getCrosshairInfo?.();
+          if (!raw) return null;
+          return typeof raw === "string" ? JSON.parse(raw) : raw;
         }
 
-        switchTimeframe(tf) {
-          this._createChart(tf);
+        _handleDrawClick(x, y) {
+          const info = this._crosshairInfo(x, y);
+          if (!info) return;
+          const price = info.price ?? info.ohlcv?.close;
+          const time  = info.time;
+
+          if (this.drawingMode === "hline" && price != null) {
+            this.chart.createHorizontalLine(`hl-${++this._toolCount}`, price);
+            this.onDrawingPlaced?.("done");
+
+          } else if (this.drawingMode === "vline" && time != null) {
+            this.chart.createVerticalLine(`vl-${++this._toolCount}`, BigInt(time));
+            this.onDrawingPlaced?.("done");
+
+          } else if (this.drawingMode === "trendline") {
+            if (!this._trendStart) {
+              this._trendStart = { time, price };
+              this.onDrawingPlaced?.("trendline-step1");
+            } else {
+              this.chart.createTrendLine(
+                `tl-${++this._toolCount}`,
+                BigInt(this._trendStart.time), this._trendStart.price,
+                BigInt(time), price
+              );
+              this._trendStart = null;
+              this.onDrawingPlaced?.("done");
+            }
+          }
         }
 
         _bindEvents() {
           const el = this.canvas;
-          const c = this.chart;
+          const c  = this.chart;
 
           el.addEventListener("mousemove", (e) => {
-            const r = el.getBoundingClientRect();
-            c.onMouseMove(e.clientX - r.left, e.clientY - r.top);
-            const info = c.getCrosshairInfo?.();
-            if (info && this.onCrosshair) this.onCrosshair(info);
+            const {x,y} = this._coords(e);
+            c.onMouseMove(x, y);
+            if (this.onCrosshair) this.onCrosshair(c.getCrosshairInfo?.());
           });
           el.addEventListener("mouseleave", () => {
-            if (this.onCrosshair) this.onCrosshair(null);
+            c.onMouseLeave?.();
+            this.onCrosshair?.(null);
           });
           el.addEventListener("mousedown", (e) => {
-            const r = el.getBoundingClientRect();
-            c.onMouseDown(e.clientX - r.left, e.clientY - r.top, e.button);
+            const {x,y} = this._coords(e);
+            if (this.drawingMode) { this._handleDrawClick(x, y); return; }
+            c.onMouseDown(x, y, e.button);
           });
           el.addEventListener("mouseup", (e) => {
-            const r = el.getBoundingClientRect();
-            c.onMouseUp(e.clientX - r.left, e.clientY - r.top, e.button);
+            if (this.drawingMode) return;
+            const {x,y} = this._coords(e);
+            c.onMouseUp(x, y, e.button);
           });
           el.addEventListener("wheel", (e) => {
             e.preventDefault();
-            const r = el.getBoundingClientRect();
-            c.onMouseWheel(e.clientX - r.left, e.clientY - r.top, e.deltaY);
-          }, { passive: false });
-          el.addEventListener("dblclick", (e) => {
-            const r = el.getBoundingClientRect();
-            c.onDoubleClick?.(e.clientX - r.left, e.clientY - r.top);
-          });
+            const {x,y} = this._coords(e);
+            c.onMouseWheel(x, y, e.deltaY);
+          }, { passive:false });
+          el.addEventListener("dblclick", () => { if (!this.drawingMode) c.fitToData?.(); });
 
-          // Touch
           el.addEventListener("touchstart", (e) => {
-            const t = e.touches[0]; const r = el.getBoundingClientRect();
-            c.onTouchStart?.(t.clientX - r.left, t.clientY - r.top);
-          }, { passive: true });
+            if (e.touches.length === 1) {
+              const t=e.touches[0], r=el.getBoundingClientRect();
+              c.onTouchStart?.(t.clientX-r.left, t.clientY-r.top);
+              this._touchDist = null;
+            } else if (e.touches.length === 2) {
+              const dx=e.touches[0].clientX-e.touches[1].clientX;
+              const dy=e.touches[0].clientY-e.touches[1].clientY;
+              this._touchDist = Math.hypot(dx,dy);
+            }
+          }, { passive:true });
           el.addEventListener("touchmove", (e) => {
-            const t = e.touches[0]; const r = el.getBoundingClientRect();
-            c.onTouchMove?.(t.clientX - r.left, t.clientY - r.top);
-          }, { passive: true });
-          el.addEventListener("touchend", () => c.onTouchEnd?.());
+            if (e.touches.length === 1) {
+              const t=e.touches[0], r=el.getBoundingClientRect();
+              c.onTouchMove?.(t.clientX-r.left, t.clientY-r.top);
+            } else if (e.touches.length===2 && this._touchDist) {
+              const dx=e.touches[0].clientX-e.touches[1].clientX;
+              const dy=e.touches[0].clientY-e.touches[1].clientY;
+              const nd=Math.hypot(dx,dy);
+              const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+              const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+              const r=el.getBoundingClientRect();
+              c.onMouseWheel?.(mx-r.left, my-r.top, (this._touchDist-nd)*2);
+              this._touchDist = nd;
+            }
+          }, { passive:true });
+          el.addEventListener("touchend", () => { c.onTouchEnd?.(); this._touchDist=null; });
         }
 
         _startLoop() {
-          const loop = () => {
-            if (this.chart) this.chart.render();
-            this.rafId = requestAnimationFrame(loop);
-          };
+          const loop = () => { if (this.chart) this.chart.render(); this.rafId = requestAnimationFrame(loop); };
           this.rafId = requestAnimationFrame(loop);
         }
+
+        setCandles(candles)  { if (!this.chart) return; this.chart.setCandles(JSON.stringify(candles)); this.fitToData(); }
+        addCandle(c)         { if (!this.chart) return; this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v); }
+        fitToData()          { this.chart?.fitToData(); }
+        setLogScale(on)      { this.chart?.setLogScale(on); }
+        setTheme(dark)       { this.chart?.setTheme(dark); }
+        setCandleStyle(s)    { this.chart?.setCandleStyle(s); }
+        clearTools()         { this.chart?.clearTools(); }
+        switchTimeframe(tf)  { this._createChart(tf); }
+        cancelDrawing()      { this.drawingMode = null; this._trendStart = null; }
       }
 
-      // ── Alpine component ────────────────────────────────────
+      // ── Alpine component ─────────────────────────────────────
       document.addEventListener("alpine:init", () => {
         Alpine.data("demoApp", () => ({
-          loading: true,
-          activeTf: defaultTf,
-          simRunning: false,
-          simInterval: null,
+          loading:       true,
+          activeTf:      defaultTf,
+          chartType:     "candlestick",
+          logScale:      false,
+          darkMode:      true,
+          simRunning:    false,
+          simInterval:   null,
           simLastCandle: { ...SEED_CANDLE },
-          ohlcv: { open: null, high: null, low: null, close: null, volume: null, dir: "" },
-          chart: null,
+          ohlcv:         { open:null, high:null, low:null, close:null, volume:null, dir:"" },
+          lastPrice:     null,
+          priceDir:      "",
+          chart:         null,
+          drawTool:      "pointer",
+          trendStep:     1,
 
           async init() {
             this.chart = new DemoChart(document.getElementById("chart-container"));
             this.chart.onCrosshair = (info) => this._updateOhlcv(info);
+            this.chart.onDrawingPlaced = (ev) => {
+              if (ev === "trendline-step1") { this.trendStep = 2; return; }
+              this.drawTool = "pointer";
+              this.trendStep = 1;
+              this.chart.drawingMode = null;
+            };
 
             await this.chart.init(this.activeTf);
-            this.chart.setCandles(ALL_CANDLES[this.activeTf]);
+            this._loadCandles(this.activeTf);
+            // Set initial last price
+            const raw = ALL_CANDLES[this.activeTf] || [];
+            if (raw.length) this.lastPrice = raw[raw.length-1].c;
             this.loading = false;
+
+            document.addEventListener("keydown", (e) => {
+              if (e.target !== document.body && e.target.tagName !== "BODY") return;
+              if (e.key === "f" || e.key === "F") this.fitToData();
+              if (e.key === "l" || e.key === "L") this.toggleLogScale();
+              if (e.key === "Escape")              this.setDrawTool("pointer");
+            });
+          },
+
+          _rawCandles(tf) { return ALL_CANDLES[tf] || []; },
+
+          _loadCandles(tf) {
+            const raw = this._rawCandles(tf);
+            this.chart.setCandles(this.chartType === "ha" ? toHeikinAshi(raw) : raw);
           },
 
           switchTimeframe(tf) {
             if (tf === this.activeTf) return;
             this.activeTf = tf;
             this.stopSim();
+            this.setDrawTool("pointer");
             this.chart.switchTimeframe(tf);
-            this.chart.setCandles(ALL_CANDLES[tf]);
-            // Reset sim seed candle to last candle of this timeframe
-            const candles = ALL_CANDLES[tf];
-            this.simLastCandle = { ...candles[candles.length - 1] };
+            // Re-apply current settings to new chart instance
+            this.chart.setLogScale(this.logScale);
+            this.chart.setTheme(this.darkMode);
+            this.chart.setCandleStyle(this.chartType === "ha" ? "candlestick" : this.chartType);
+            this._loadCandles(tf);
+            const raw = this._rawCandles(tf);
+            this.simLastCandle = { ...raw[raw.length-1] };
           },
 
-          toggleSim() {
-            this.simRunning ? this.stopSim() : this.startSim();
+          setChartType(type) {
+            this.chartType = type;
+            this.chart.setCandleStyle(type === "ha" ? "candlestick" : type);
+            this._loadCandles(this.activeTf);
           },
+
+          setDrawTool(tool) {
+            this.drawTool = tool;
+            this.trendStep = 1;
+            this.chart.drawingMode = tool === "pointer" ? null : tool;
+            this.chart._trendStart = null;
+          },
+
+          clearTools() { this.chart?.clearTools(); this.setDrawTool("pointer"); },
+
+          drawHintText() {
+            if (this.drawTool === "hline")     return "Click to place horizontal line";
+            if (this.drawTool === "vline")     return "Click to place vertical line";
+            if (this.drawTool === "trendline") return this.trendStep === 1
+              ? "Click to set start point" : "Click to set end point";
+            return "";
+          },
+
+          fitToData() { this.chart?.fitToData(); },
+
+          toggleLogScale() {
+            this.logScale = !this.logScale;
+            this.chart?.setLogScale(this.logScale);
+          },
+
+          toggleTheme() {
+            this.darkMode = !this.darkMode;
+            document.body.classList.toggle("dark",  this.darkMode);
+            document.body.classList.toggle("light", !this.darkMode);
+            this.chart?.setTheme(this.darkMode);
+          },
+
+          toggleSim() { this.simRunning ? this.stopSim() : this.startSim(); },
 
           startSim() {
             this.simRunning = true;
             const tfSec = TF_SECONDS[this.activeTf] || 3600;
-
             this.simInterval = setInterval(() => {
               const prev = this.simLastCandle;
-              const price = prev.c;
-              const vol = price * (0.005 + simRand() * 0.006);
-              const body = (simRand() - 0.49) * vol;
-              const open = price;
+              const vol   = prev.c * (0.005 + simRand() * 0.006);
+              const body  = (simRand() - 0.49) * vol;
+              const open  = prev.c;
               const close = Math.max(1000, open + body);
-              const wick = simRand() * Math.abs(body) * 0.6;
-              const high = Math.max(open, close) + wick;
-              const low = Math.min(open, close) - wick * simRand();
-              const volume = Math.max(10, 200 + simRand() * 400);
-
+              const wick  = simRand() * Math.abs(body) * 0.6;
               const candle = {
                 time: prev.time + tfSec,
-                o: Math.round(open * 100) / 100,
-                h: Math.round(high * 100) / 100,
-                l: Math.round(Math.max(1000, low) * 100) / 100,
-                c: Math.round(close * 100) / 100,
-                v: Math.round(volume * 10) / 10,
+                o: Math.round(open*100)/100,
+                h: Math.round((Math.max(open,close)+wick)*100)/100,
+                l: Math.round(Math.max(1000, Math.min(open,close)-wick*simRand())*100)/100,
+                c: Math.round(close*100)/100,
+                v: Math.round(Math.max(10, 200+simRand()*400)*10)/10,
               };
-
               this.chart.addCandle(candle);
+              const prev_price = this.lastPrice;
+              this.lastPrice = candle.c;
+              this.priceDir = candle.c > prev_price ? "up" : candle.c < prev_price ? "dn" : "";
               this.simLastCandle = candle;
             }, 1500);
           },
 
-          stopSim() {
-            this.simRunning = false;
-            clearInterval(this.simInterval);
-          },
+          stopSim() { this.simRunning = false; clearInterval(this.simInterval); },
 
           _updateOhlcv(info) {
-            if (!info) {
-              this.ohlcv.open = null;
-              return;
-            }
+            if (!info) { this.ohlcv.open = null; return; }
             const v = typeof info === "string" ? JSON.parse(info) : info;
-            const ohlcv = v?.ohlcv ?? v;
-            if (!ohlcv) return;
+            const d = v?.ohlcv ?? v;
+            if (!d) return;
             this.ohlcv = {
-              open: ohlcv.open ?? ohlcv.o,
-              high: ohlcv.high ?? ohlcv.h,
-              low: ohlcv.low ?? ohlcv.l,
-              close: ohlcv.close ?? ohlcv.c,
-              volume: ohlcv.volume ?? ohlcv.v,
-              dir: (ohlcv.close ?? ohlcv.c) >= (ohlcv.open ?? ohlcv.o) ? "ohlcv-up" : "ohlcv-down",
+              open:   d.open  ?? d.o,
+              high:   d.high  ?? d.h,
+              low:    d.low   ?? d.l,
+              close:  d.close ?? d.c,
+              volume: d.volume ?? d.v,
+              dir: (d.close ?? d.c) >= (d.open ?? d.o) ? "ohlcv-up" : "ohlcv-down",
             };
           },
 
           fmt(v) {
             if (v == null) return "—";
-            return Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return Number(v).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
           },
-
           fmtVol(v) {
             if (v == null) return "—";
-            if (v >= 1000) return (v / 1000).toFixed(1) + "K";
-            return Number(v).toFixed(0);
+            return v >= 1000 ? (v/1000).toFixed(1)+"K" : Number(v).toFixed(0);
           },
         }));
       });

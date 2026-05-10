@@ -68,7 +68,7 @@ export class RealtimeClient {
 
     this.socket = new Socket(this.wsUrl, {
       params: {},
-      reconnectAfterMs: (tries) => {
+      reconnectAfterMs: (tries: number): number => {
         // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s max
         const delay = Math.min(1000 * Math.pow(2, tries), 30000);
         // Only log first few attempts to reduce console noise
@@ -80,7 +80,7 @@ export class RealtimeClient {
         this.updateStatus("reconnecting");
         return delay;
       },
-      rejoinAfterMs: (tries) => {
+      rejoinAfterMs: (tries: number): number => {
         // Same backoff for channel rejoins
         return Math.min(1000 * Math.pow(2, tries), 30000);
       },
@@ -94,7 +94,7 @@ export class RealtimeClient {
       this.lastErrorLogged = false; // Reset error logging flag
     });
 
-    this.socket.onError((error) => {
+    this.socket.onError((_error: unknown) => {
       // Only log the first error, not every reconnection attempt
       if (!this.lastErrorLogged) {
         console.error(
@@ -134,22 +134,22 @@ export class RealtimeClient {
     this.channel = this.socket.channel(topic, joinParams);
 
     // Channel event handlers
-    this.channel.on("candle_snapshot", (payload) => {
+    this.channel.on("candle_snapshot", (payload: { candles: Candle[] }) => {
       console.log(
         `[RealtimeClient] Received snapshot: ${payload.candles.length} candles`,
       );
       this.handleSnapshot(payload);
     });
 
-    this.channel.on("candle_update", (candle) => {
+    this.channel.on("candle_update", (candle: Candle) => {
       this.handleCandleUpdate(candle, false);
     });
 
-    this.channel.on("candle_final", (candle) => {
+    this.channel.on("candle_final", (candle: Candle) => {
       this.handleCandleUpdate(candle, true);
     });
 
-    this.channel.on("candle_backfill", (payload) => {
+    this.channel.on("candle_backfill", (payload: { candles: Candle[] }) => {
       console.log(
         `[RealtimeClient] Received backfill: ${payload.candles.length} candles`,
       );
@@ -164,7 +164,7 @@ export class RealtimeClient {
         this.updateStatus("streaming");
         this.reconnectAttempts = 0;
       })
-      .receive("error", (err) => {
+      .receive("error", (err: unknown) => {
         console.error("[RealtimeClient] Failed to join channel:", err);
         this.updateStatus("error");
         this.reconnectAttempts++;

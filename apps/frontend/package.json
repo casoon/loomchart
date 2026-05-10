@@ -9,7 +9,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "typecheck": "astro check && tsc --noEmit"
+    "typecheck": "astro check && tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@alpinejs/persist": "^3.13.0",
@@ -24,7 +25,9 @@
     "@astrojs/tailwind": "^5.0.0",
     "@types/alpinejs": "^3.13.0",
     "autoprefixer": "^10.4.16",
+    "jsdom": "^25.0.1",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.9"
   }
 }

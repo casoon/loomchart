@@ -177,12 +177,14 @@ impl Symbol {
     }
 
     /// Round price to tick size
+    #[cfg(feature = "std")]
     #[inline]
     pub fn round_price(&self, price: Price) -> Price {
         (price / self.tick_size).round() * self.tick_size
     }
 
     /// Round quantity to lot size
+    #[cfg(feature = "std")]
     #[inline]
     pub fn round_quantity(&self, qty: Quantity) -> Quantity {
         (qty / self.lot_size).floor() * self.lot_size

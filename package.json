@@ -7,7 +7,7 @@
     "prepare": "husky",
     "dev": "pnpm run build:packages && pnpm --filter @loom/frontend run dev",
     "build": "pnpm -r run build",
-    "build:packages": "pnpm --filter @loom/shared --filter @loom/chart-core --filter @loom/chart-wrapper run build",
+    "build:packages": "pnpm --filter @loom/shared --filter @loom/chart-wrapper run build",
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",

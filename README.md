@@ -76,7 +76,8 @@ loomchart/
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Astro 6, Alpine.js 3, TypeScript 5, Tailwind CSS 4 |
+| `apps/frontend` | Astro 4, Alpine.js 3, TypeScript 5, Tailwind CSS 3 |
+| `apps/demo` | Astro 6, Alpine.js 3, TypeScript 5, Tailwind CSS 4 |
 | Chart Engine | Rust 1.75+, wasm-bindgen, web-sys |
 | Backend | Elixir, Phoenix Framework, Phoenix Channels |
 | Data Feed | Rust, Tokio, tokio-tungstenite, SQLx |
@@ -126,11 +127,10 @@ mix phx.server
 ### 5. Start the frontend
 
 ```bash
-cd apps/frontend
 pnpm dev
 ```
 
-The app will be available at `http://localhost:4321`.
+This builds workspace packages first, then starts the frontend dev server at `http://localhost:4321`.
 
 ---
 
@@ -142,6 +142,8 @@ The app will be available at `http://localhost:4321`.
 cargo test --workspace
 ```
 
+> **Note:** `cargo test --workspace` currently fails to compile due to open issues in `packages/signals`. Run `cargo test -p loom-signals` to track progress.
+
 ### Build WASM (dev mode)
 
 ```bash
@@ -149,11 +151,16 @@ cd packages/wasm-core
 wasm-pack build --target web --dev --out-dir ../../apps/frontend/src/wasm
 ```
 
-### Lint & type-check frontend
+### Type-check frontend
 
 ```bash
-cd apps/frontend
-pnpm check
+pnpm --filter @loom/frontend typecheck
+```
+
+### Run frontend tests
+
+```bash
+pnpm --filter @loom/frontend test
 ```
 
 ---
@@ -189,7 +196,7 @@ Rust microservice that connects to the Capital.com streaming WebSocket, backfill
 ## Contributing
 
 1. Fork the repo and create a feature branch
-2. Run `cargo test --workspace` and `pnpm check` before opening a PR
+2. Run `cargo test --workspace` and `pnpm --filter @loom/frontend typecheck` before opening a PR
 3. Keep commits focused; one logical change per commit
 4. PRs should include a brief description of *why*, not just *what*
 
