@@ -77,6 +77,61 @@ const lastCandleJson = JSON.stringify(lastCandle);
         padding:4px 12px; border-radius:12px; pointer-events:none;
         white-space:nowrap;
       }
+
+      /* Layouts dropdown */
+      .popover {
+        position:absolute; top:42px; right:8px; z-index:50;
+        background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+        padding:10px; min-width:260px;
+        box-shadow:0 8px 24px rgba(0,0,0,0.4);
+      }
+      .popover h4 { font-size:11px; color:var(--muted); margin-bottom:6px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
+      .popover-row { display:flex; gap:6px; align-items:center; padding:4px 0; }
+      .popover-row + .popover-row { border-top:1px solid var(--border); }
+      .popover-input { flex:1; background:var(--bg); border:1px solid var(--border); color:var(--fg); padding:4px 8px; border-radius:3px; font-family:inherit; font-size:11px; outline:none; }
+      .popover-input:focus { border-color:var(--accent); }
+      .layout-item { flex:1; font-size:11px; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .layout-item small { color:var(--muted); margin-left:4px; }
+
+      /* Bottom toolbar (replay/playback) */
+      .playback-bar {
+        display:flex; align-items:center; gap:8px;
+        padding:0 12px; height:36px; flex-shrink:0;
+        border-top:1px solid var(--border);
+        background:var(--bg2); user-select:none;
+      }
+      .seg-btn { font-size:11px; padding:3px 10px; border-radius:3px; border:none; background:transparent; color:var(--muted); cursor:pointer; font-family:inherit; transition:background 0.1s, color 0.1s; }
+      .seg-btn:hover { color:var(--fg); background:var(--bg3); }
+      .seg-btn.active { background:var(--accent); color:#fff; }
+      .seg-group { display:flex; gap:1px; padding:1px; border-radius:4px; background:var(--bg3); }
+      .scrubber { flex:1; -webkit-appearance:none; appearance:none; height:4px; background:var(--bg3); border-radius:2px; outline:none; cursor:pointer; }
+      .scrubber::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+      .scrubber::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; border:none; }
+      .speed-select { background:var(--bg); border:1px solid var(--border); color:var(--fg); padding:2px 6px; border-radius:3px; font-family:inherit; font-size:11px; outline:none; cursor:pointer; }
+
+      /* Alerts panel */
+      #alerts-panel {
+        position:absolute; top:8px; right:8px; z-index:5;
+        background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+        padding:8px 10px; min-width:180px; max-width:280px;
+        font-size:11px;
+      }
+      #alerts-panel h4 { font-size:10px; color:var(--muted); margin-bottom:4px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
+      .alert-item { display:flex; align-items:center; gap:6px; padding:3px 0; }
+      .alert-item + .alert-item { border-top:1px solid var(--border); }
+      .alert-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+      .alert-dot.armed { background:var(--accent); }
+      .alert-dot.triggered { background:var(--up); animation:flash 1s ease-in-out infinite; }
+      @keyframes flash { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      .alert-price { flex:1; tabular-nums:tabular-nums; color:var(--fg); }
+      .alert-del { background:transparent; border:none; color:var(--muted); cursor:pointer; padding:0 4px; font-size:13px; }
+      .alert-del:hover { color:var(--dn); }
+      .alert-flash {
+        position:absolute; inset:0; pointer-events:none; z-index:6;
+        background:radial-gradient(circle at center, rgba(63,185,80,0.25) 0%, transparent 60%);
+        animation:alertflash 800ms ease-out forwards;
+      }
+      @keyframes alertflash { 0%{opacity:1} 100%{opacity:0} }
     </style>
   </head>
 
@@ -112,19 +167,20 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
       <div class="flex-1"></div>
 
-      <!-- Live simulation toggle -->
-      <button
-        class="btn btn-ghost flex items-center gap-1.5 text-xs px-3 py-1 rounded border"
-        style="border-color:var(--border)"
-        x-on:click="toggleSim()"
-        x-bind:class="simRunning ? 'active-up' : ''"
-        x-bind:style="simRunning ? 'border-color:var(--up)' : 'border-color:var(--border)'"
-      >
+      <!-- Mode status pill (small, shows current mode) -->
+      <div class="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs"
+           style="background:var(--bg3);color:var(--muted)">
         <span class="w-1.5 h-1.5 rounded-full inline-block"
-              x-bind:class="simRunning ? 'pulse' : ''"
-              x-bind:style="simRunning ? 'background:var(--up)' : 'background:var(--muted)'"></span>
-        <span x-text="simRunning ? 'Live' : 'Simulate'"></span>
-      </button>
+              x-bind:class="mode === 'simulate' || mode === 'replay' ? 'pulse' : ''"
+              x-bind:style="mode === 'simulate' ? 'background:var(--up)' : mode === 'replay' ? 'background:var(--accent)' : 'background:var(--muted)'"></span>
+        <span x-text="mode === 'simulate' ? 'Simulating' : mode === 'replay' ? 'Replay ' + replayPos + '/' + replayTotal : 'Static'"></span>
+      </div>
+
+      <!-- Layouts button -->
+      <button class="btn btn-ghost icon-btn"
+              x-on:click="layoutsOpen = !layoutsOpen"
+              x-bind:class="layoutsOpen ? 'active' : ''"
+              title="Save / load chart layouts">💾</button>
 
       <!-- Badges -->
       <span class="text-[10px] px-2 py-0.5 rounded-full" style="background:var(--badge);color:var(--muted)">synthetic</span>
@@ -144,6 +200,31 @@ const lastCandleJson = JSON.stringify(lastCandle);
         </svg>
       </a>
     </header>
+
+    <!-- Layouts popover -->
+    <div class="popover" x-show="layoutsOpen" x-cloak x-on:click.outside="layoutsOpen = false">
+      <h4>Save current layout</h4>
+      <div class="popover-row" style="border:none">
+        <input class="popover-input" type="text" placeholder="My layout"
+               x-model="layoutNameInput"
+               x-on:keydown.enter="saveLayout()">
+        <button class="btn btn-ghost scale-btn" x-on:click="saveLayout()">Save</button>
+      </div>
+      <h4 style="margin-top:8px">Saved layouts</h4>
+      <template x-if="savedLayouts.length === 0">
+        <div style="font-size:11px;color:var(--dim);padding:4px 0">No layouts saved yet.</div>
+      </template>
+      <template x-for="(lo, idx) in savedLayouts" x-bind:key="lo.ts">
+        <div class="popover-row">
+          <span class="layout-item">
+            <span x-text="lo.name"></span>
+            <small x-text="lo.tf + ' · ' + lo.chartType"></small>
+          </span>
+          <button class="btn btn-ghost scale-btn" x-on:click="loadLayout(idx)">Load</button>
+          <button class="alert-del" x-on:click="deleteLayout(idx)" title="Delete">×</button>
+        </div>
+      </template>
+    </div>
 
     <!-- ── Row 2: Toolbar (chart controls / OHLCV) ───────────── -->
     <div class="flex items-center gap-1 px-2 shrink-0 border-b select-none"
@@ -264,6 +345,17 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         <div class="tool-sep"></div>
 
+        <button class="tool-btn" title="Price alert — click chart at desired level"
+                x-on:click="setDrawTool('alert')"
+                x-bind:class="drawTool === 'alert' ? 'active' : ''">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 1c2 0 4 1.5 4 4v3l1.5 2H2.5L4 8V5c0-2.5 2-4 3-4z"/>
+            <path d="M5.5 11.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5"/>
+          </svg>
+        </button>
+
+        <div class="tool-sep"></div>
+
         <button class="tool-btn warn" title="Clear all drawings"
                 x-on:click="clearTools()">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -298,7 +390,70 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <div id="draw-hint" x-show="drawTool !== 'pointer' && !loading">
           <span x-text="drawHintText()"></span>
         </div>
+
+        <!-- Alerts panel -->
+        <div id="alerts-panel" x-show="alerts.length > 0 && !loading">
+          <h4>Price alerts</h4>
+          <template x-for="(a, idx) in alerts" x-bind:key="a.id">
+            <div class="alert-item">
+              <span class="alert-dot" x-bind:class="a.triggered ? 'triggered' : 'armed'"></span>
+              <span x-text="(a.dir === 'above' ? '↑' : '↓')" x-bind:style="a.dir === 'above' ? 'color:var(--up)' : 'color:var(--dn)'"></span>
+              <span class="alert-price" x-text="fmt(a.price)"></span>
+              <button class="alert-del" x-on:click="removeAlert(idx)" title="Remove">×</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Alert flash overlay (visible briefly when triggered) -->
+        <div class="alert-flash" x-show="alertFlash" x-cloak></div>
       </div>
+    </div>
+
+    <!-- ── Playback bar (Mode / Replay controls) ─────────────── -->
+    <div class="playback-bar">
+      <span class="text-[10px]" style="color:var(--muted)">MODE</span>
+      <div class="seg-group">
+        <button class="seg-btn" x-on:click="setMode('off')"      x-bind:class="mode === 'off'      ? 'active' : ''">Static</button>
+        <button class="seg-btn" x-on:click="setMode('simulate')" x-bind:class="mode === 'simulate' ? 'active' : ''">Simulate</button>
+        <button class="seg-btn" x-on:click="setMode('replay')"   x-bind:class="mode === 'replay'   ? 'active' : ''">Replay</button>
+      </div>
+
+      <!-- Replay-specific controls -->
+      <template x-if="mode === 'replay'">
+        <div class="flex items-center gap-2" style="flex:1">
+          <button class="seg-btn" x-on:click="replayToggle()"
+                  x-bind:title="replayPlaying ? 'Pause' : 'Play'">
+            <span x-text="replayPlaying ? '⏸' : '▶'"></span>
+          </button>
+          <button class="seg-btn" x-on:click="replayStep()" title="Step forward">⏭</button>
+          <input class="scrubber" type="range" min="0"
+                 x-bind:max="replayTotal" x-model.number="replayPos"
+                 x-on:input="replaySeek(replayPos)">
+          <span class="text-[11px] tabular-nums" style="color:var(--muted);min-width:90px;text-align:right"
+                x-text="replayPos + ' / ' + replayTotal"></span>
+          <select class="speed-select" x-model.number="replaySpeed" x-on:change="replayRestart()">
+            <option value="0.5">0.5×</option>
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="5">5×</option>
+            <option value="10">10×</option>
+          </select>
+        </div>
+      </template>
+
+      <!-- Simulate-specific status -->
+      <template x-if="mode === 'simulate'">
+        <div class="text-[11px]" style="color:var(--muted)">
+          Generating synthetic candles every 1.5s · seed-deterministic
+        </div>
+      </template>
+
+      <!-- Static mode hint -->
+      <template x-if="mode === 'off'">
+        <div class="text-[11px]" style="color:var(--dim)">
+          Static historical data · switch to Simulate or Replay to animate
+        </div>
+      </template>
     </div>
 
     <!-- ── Footer ────────────────────────────────────────────── -->
@@ -306,7 +461,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing tools · 7 chart types · Log scale · Axis lock · Theme</span>
+        <span>Drawing · Alerts · Replay · Layouts · 7 chart types · Log · Axis lock</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -454,6 +609,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
               this._trendStart = null;
               this.onDrawingPlaced?.("done");
             }
+          } else if (this.drawingMode === "alert" && price != null) {
+            // Notify Alpine component which owns the alerts state
+            this.onAlertPlace?.(price);
+            this.onDrawingPlaced?.("done");
           }
         }
 
@@ -542,9 +701,30 @@ const lastCandleJson = JSON.stringify(lastCandle);
           logScale:      false,
           axisLocked:    false,
           darkMode:      true,
-          simRunning:    false,
+
+          // Playback mode: off | simulate | replay
+          mode:          "off",
           simInterval:   null,
           simLastCandle: { ...SEED_CANDLE },
+
+          // Replay state
+          replayPlaying: false,
+          replayPos:     0,
+          replayTotal:   0,
+          replaySpeed:   1,
+          replayInterval: null,
+          replayBaseCandles: [],
+
+          // Alerts
+          alerts:        [],
+          alertFlash:    false,
+          _alertId:      0,
+
+          // Layouts
+          layoutsOpen:   false,
+          savedLayouts:  [],
+          layoutNameInput: "",
+
           ohlcv:         { open:null, high:null, low:null, close:null, volume:null, dir:"" },
           lastPrice:     null,
           priceDir:      "",
@@ -555,6 +735,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           async init() {
             this.chart = new DemoChart(document.getElementById("chart-container"));
             this.chart.onCrosshair = (info) => this._updateOhlcv(info);
+            this.chart.onAlertPlace = (price) => this.addAlertAt(price);
             this.chart.onDrawingPlaced = (ev) => {
               if (ev === "trendline-step1") { this.trendStep = 2; return; }
               this.drawTool = "pointer";
@@ -568,6 +749,14 @@ const lastCandleJson = JSON.stringify(lastCandle);
             const raw = ALL_CANDLES[this.activeTf] || [];
             if (raw.length) this.lastPrice = raw[raw.length-1].c;
             this.loading = false;
+
+            // Load saved layouts from localStorage
+            this.savedLayouts = this._readLayouts();
+
+            // Request notification permission for price alerts (silent if denied)
+            if ("Notification" in window && Notification.permission === "default") {
+              try { Notification.requestPermission(); } catch (_) {}
+            }
 
             document.addEventListener("keydown", (e) => {
               if (e.target !== document.body && e.target.tagName !== "BODY") return;
@@ -591,7 +780,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
           switchTimeframe(tf) {
             if (tf === this.activeTf) return;
             this.activeTf = tf;
-            this.stopSim();
+            this._stopAllPlayback();
+            this.mode = "off";
             this.setDrawTool("pointer");
             this.chart.switchTimeframe(tf);
             // Re-apply current settings to new chart instance
@@ -627,6 +817,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             if (this.drawTool === "vline")     return "Click to place vertical line";
             if (this.drawTool === "trendline") return this.trendStep === 1
               ? "Click to set start point" : "Click to set end point";
+            if (this.drawTool === "alert")     return "Click to set price alert";
             return "";
           },
 
@@ -649,11 +840,34 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart?.setTheme(this.darkMode);
           },
 
-          toggleSim() { this.simRunning ? this.stopSim() : this.startSim(); },
+          // ── Mode switching ────────────────────────────────────
+          setMode(m) {
+            if (this.mode === m) return;
+            this._stopAllPlayback();
+            this.mode = m;
+            if (m === "simulate") this._startSim();
+            else if (m === "replay") this._startReplay();
+            else this._resetToFull(); // off
+          },
 
-          startSim() {
-            this.simRunning = true;
+          _stopAllPlayback() {
+            clearInterval(this.simInterval); this.simInterval = null;
+            clearInterval(this.replayInterval); this.replayInterval = null;
+            this.replayPlaying = false;
+          },
+
+          _resetToFull() {
+            // Reload full historical candles for current tf + chart type
+            this._loadCandles(this.activeTf);
+            const raw = this._rawCandles(this.activeTf);
+            if (raw.length) this.lastPrice = raw[raw.length - 1].c;
+          },
+
+          // ── Simulation ────────────────────────────────────────
+          _startSim() {
             const tfSec = TF_SECONDS[this.activeTf] || 3600;
+            const raw = this._rawCandles(this.activeTf);
+            if (raw.length) this.simLastCandle = { ...raw[raw.length - 1] };
             this.simInterval = setInterval(() => {
               const prev = this.simLastCandle;
               const vol   = prev.c * (0.005 + simRand() * 0.006);
@@ -670,14 +884,184 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 v: Math.round(Math.max(10, 200+simRand()*400)*10)/10,
               };
               this.chart.addCandle(candle);
-              const prev_price = this.lastPrice;
-              this.lastPrice = candle.c;
-              this.priceDir = candle.c > prev_price ? "up" : candle.c < prev_price ? "dn" : "";
+              this._onNewClose(candle.c);
               this.simLastCandle = candle;
             }, 1500);
           },
 
-          stopSim() { this.simRunning = false; clearInterval(this.simInterval); },
+          // ── Replay ────────────────────────────────────────────
+          _startReplay() {
+            const raw = this._rawCandles(this.activeTf);
+            // Apply HA/Renko transform once for replay base
+            let base = raw;
+            if (this.chartType === "ha")    base = toHeikinAshi(raw);
+            else if (this.chartType === "renko") base = toRenko(raw);
+            this.replayBaseCandles = base;
+            this.replayTotal = base.length;
+            // Start at ~30% of data so user sees something animated
+            const start = Math.max(2, Math.floor(base.length * 0.3));
+            this.replayPos = start;
+            this.chart.setCandles(base.slice(0, start));
+            this.replayPlaying = true;
+            this._scheduleReplayTick();
+          },
+
+          _scheduleReplayTick() {
+            clearInterval(this.replayInterval);
+            const intervalMs = Math.max(50, 800 / this.replaySpeed);
+            this.replayInterval = setInterval(() => {
+              if (!this.replayPlaying) return;
+              if (this.replayPos >= this.replayTotal) {
+                this.replayPlaying = false;
+                clearInterval(this.replayInterval);
+                return;
+              }
+              const c = this.replayBaseCandles[this.replayPos];
+              this.chart.addCandle(c);
+              this._onNewClose(c.c);
+              this.replayPos += 1;
+            }, intervalMs);
+          },
+
+          replayToggle() {
+            if (this.mode !== "replay") return;
+            this.replayPlaying = !this.replayPlaying;
+            if (this.replayPlaying) this._scheduleReplayTick();
+          },
+
+          replayStep() {
+            if (this.mode !== "replay") return;
+            if (this.replayPos >= this.replayTotal) return;
+            const c = this.replayBaseCandles[this.replayPos];
+            this.chart.addCandle(c);
+            this._onNewClose(c.c);
+            this.replayPos += 1;
+          },
+
+          replaySeek(pos) {
+            if (this.mode !== "replay") return;
+            const idx = Math.max(0, Math.min(this.replayTotal, Math.floor(pos)));
+            this.replayPos = idx;
+            // Rebuild chart from start
+            this.chart.setCandles(this.replayBaseCandles.slice(0, idx));
+            if (idx > 0) this.lastPrice = this.replayBaseCandles[idx - 1].c;
+          },
+
+          replayRestart() {
+            if (this.mode === "replay" && this.replayPlaying) this._scheduleReplayTick();
+          },
+
+          // ── Alerts ────────────────────────────────────────────
+          addAlertAt(price) {
+            const current = this.lastPrice ?? price;
+            const dir = price >= current ? "above" : "below";
+            const id = ++this._alertId;
+            this.alerts.push({ id, price, dir, triggered: false });
+            // Draw horizontal line so user sees it
+            const lineId = `alert-${id}`;
+            this.chart?.chart?.createHorizontalLine(lineId, price);
+          },
+
+          removeAlert(idx) {
+            const a = this.alerts[idx];
+            if (!a) return;
+            try { this.chart?.chart?.removeTool(`alert-${a.id}`); } catch (_) {}
+            this.alerts.splice(idx, 1);
+          },
+
+          _checkAlerts(close) {
+            for (const a of this.alerts) {
+              if (a.triggered) continue;
+              if ((a.dir === "above" && close >= a.price) ||
+                  (a.dir === "below" && close <= a.price)) {
+                a.triggered = true;
+                this._fireAlert(a);
+              }
+            }
+          },
+
+          _fireAlert(a) {
+            this.alertFlash = true;
+            setTimeout(() => { this.alertFlash = false; }, 800);
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("LoomChart alert", {
+                body: `Price ${a.dir} ${a.price.toFixed(2)}`,
+              });
+            }
+          },
+
+          _onNewClose(close) {
+            const prev = this.lastPrice;
+            this.lastPrice = close;
+            this.priceDir = prev == null ? "" : (close > prev ? "up" : close < prev ? "dn" : "");
+            this._checkAlerts(close);
+          },
+
+          // ── Layouts ───────────────────────────────────────────
+          _readLayouts() {
+            try {
+              return JSON.parse(localStorage.getItem("loomchart-demo-layouts") || "[]");
+            } catch (_) { return []; }
+          },
+
+          _writeLayouts() {
+            try { localStorage.setItem("loomchart-demo-layouts", JSON.stringify(this.savedLayouts)); }
+            catch (_) {}
+          },
+
+          saveLayout() {
+            const name = (this.layoutNameInput || "").trim() || `Layout ${this.savedLayouts.length + 1}`;
+            let wasmState = "";
+            try { wasmState = this.chart?.chart?.exportState() || ""; } catch (_) {}
+            const layout = {
+              name,
+              ts: Date.now(),
+              tf: this.activeTf,
+              chartType: this.chartType,
+              logScale: this.logScale,
+              axisLocked: this.axisLocked,
+              darkMode: this.darkMode,
+              wasmState,
+            };
+            this.savedLayouts.push(layout);
+            this._writeLayouts();
+            this.layoutNameInput = "";
+          },
+
+          loadLayout(idx) {
+            const lo = this.savedLayouts[idx];
+            if (!lo) return;
+            // Stop any playback first
+            this.setMode("off");
+            // Apply timeframe (rebuilds chart instance)
+            if (lo.tf !== this.activeTf) {
+              this.activeTf = lo.tf;
+              this.chart.switchTimeframe(lo.tf);
+            }
+            this.chartType = lo.chartType;
+            this.logScale = !!lo.logScale;
+            this.axisLocked = !!lo.axisLocked;
+            this.darkMode = !!lo.darkMode;
+            document.body.classList.toggle("dark", this.darkMode);
+            document.body.classList.toggle("light", !this.darkMode);
+            this.chart.setTheme(this.darkMode);
+            this.chart.setLogScale(this.logScale);
+            this.chart.setPriceLocked(this.axisLocked);
+            const wasmStyle = (lo.chartType === "ha" || lo.chartType === "renko") ? "candlestick" : lo.chartType;
+            this.chart.setCandleStyle(wasmStyle);
+            // Import full WASM state if available
+            if (lo.wasmState) {
+              try { this.chart.chart?.importState(lo.wasmState); } catch (e) { console.warn("Import failed:", e); }
+            } else {
+              this._loadCandles(lo.tf);
+            }
+            this.layoutsOpen = false;
+          },
+
+          deleteLayout(idx) {
+            this.savedLayouts.splice(idx, 1);
+            this._writeLayouts();
+          },
 
           _updateOhlcv(info) {
             if (!info) { this.ohlcv.open = null; return; }
