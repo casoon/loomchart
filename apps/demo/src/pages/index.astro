@@ -278,6 +278,21 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>Axis</span>
       </button>
 
+      <!-- Volume profile (VPVR) toggle -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleVolumeProfile()"
+              x-bind:class="showVolumeProfile ? 'active' : ''"
+              title="Volume Profile Visible Range (V) — shows volume distribution by price">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor">
+          <rect x="0" y="1" width="3"  height="1.4"/>
+          <rect x="0" y="3" width="7"  height="1.4"/>
+          <rect x="0" y="5" width="10" height="1.4"/>
+          <rect x="0" y="7" width="5"  height="1.4"/>
+          <rect x="0" y="9" width="2"  height="1.4"/>
+        </svg>
+        <span>VP</span>
+      </button>
+
       <div class="sep"></div>
 
       <!-- OHLCV crosshair info -->
@@ -296,6 +311,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <kbd class="px-1 rounded" style="background:var(--bg3)">F</kbd> fit &nbsp;
         <kbd class="px-1 rounded" style="background:var(--bg3)">L</kbd> log &nbsp;
         <kbd class="px-1 rounded" style="background:var(--bg3)">A</kbd> lock &nbsp;
+        <kbd class="px-1 rounded" style="background:var(--bg3)">V</kbd> vp &nbsp;
         <kbd class="px-1 rounded" style="background:var(--bg3)">Esc</kbd> cancel
       </span>
     </div>
@@ -461,7 +477,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing · Alerts · Replay · Layouts · 7 chart types · Log · Axis lock</span>
+        <span>Drawing · Alerts · Replay · Layouts · Volume Profile · 7 chart types · Log · Axis lock</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -554,6 +570,13 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this.canvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;";
           this.container.appendChild(this.canvas);
           this.chart.attachCanvas(this.canvas);
+
+          // Overlay canvas for JS-rendered features (volume profile)
+          if (this.overlayCanvas) this.overlayCanvas.remove();
+          this.overlayCanvas = document.createElement("canvas");
+          this.overlayCanvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3;";
+          this.container.appendChild(this.overlayCanvas);
+
           this._bindEvents();
           this._startLoop();
 
@@ -676,12 +699,128 @@ const lastCandleJson = JSON.stringify(lastCandle);
         }
 
         _startLoop() {
-          const loop = () => { if (this.chart) this.chart.render(); this.rafId = requestAnimationFrame(loop); };
+          const loop = () => {
+            if (this.chart) {
+              this.chart.render();
+              if (this.showVolumeProfile) this._drawVolumeProfile();
+              else this._clearOverlay();
+            }
+            this.rafId = requestAnimationFrame(loop);
+          };
           this.rafId = requestAnimationFrame(loop);
         }
 
-        setCandles(candles)  { if (!this.chart) return; this.chart.setCandles(JSON.stringify(candles)); this.fitToData(); }
-        addCandle(c)         { if (!this.chart) return; this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v); }
+        _clearOverlay() {
+          if (!this.overlayCanvas) return;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        }
+
+        _drawVolumeProfile() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || !this.overlayCanvas || candles.length === 0) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width;
+          const H = vp.dimensions.height;
+
+          if (this.overlayCanvas.width !== W * dpr) this.overlayCanvas.width = W * dpr;
+          if (this.overlayCanvas.height !== H * dpr) this.overlayCanvas.height = H * dpr;
+
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, W, H);
+
+          // Visible candles
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const visible = candles.filter(c => c.time >= tStart && c.time <= tEnd);
+          if (visible.length === 0) return;
+
+          // Build bins across visible price range
+          const NUM_BINS = 28;
+          const pMin = vp.price.min, pMax = vp.price.max;
+          const binSize = (pMax - pMin) / NUM_BINS;
+          if (binSize <= 0) return;
+          const bins = new Array(NUM_BINS).fill(0);
+
+          for (const c of visible) {
+            // Distribute candle volume uniformly across bins its low–high range touches
+            const lowBin  = Math.max(0, Math.floor((c.l - pMin) / binSize));
+            const highBin = Math.min(NUM_BINS - 1, Math.floor((c.h - pMin) / binSize));
+            if (highBin < 0 || lowBin >= NUM_BINS) continue;
+            const span = Math.max(1, highBin - lowBin + 1);
+            const per = (c.v || 1) / span;
+            for (let i = lowBin; i <= highBin; i++) bins[i] += per;
+          }
+
+          let maxBin = 0;
+          for (let i = 0; i < NUM_BINS; i++) if (bins[i] > maxBin) maxBin = bins[i];
+          if (maxBin === 0) return;
+
+          // Find POC (Point of Control = highest volume bin)
+          let pocIdx = 0;
+          for (let i = 0; i < NUM_BINS; i++) if (bins[i] === maxBin) { pocIdx = i; break; }
+
+          const maxBarWidth = W * 0.22;
+          const slotH = H / NUM_BINS;
+          const barH = slotH * 0.88;
+
+          ctx.globalAlpha = 1;
+          for (let i = 0; i < NUM_BINS; i++) {
+            if (bins[i] === 0) continue;
+            const w = (bins[i] / maxBin) * maxBarWidth;
+            // bin 0 = lowest price = bottom of chart
+            const y = H - (i + 1) * slotH + (slotH - barH) / 2;
+            ctx.fillStyle = i === pocIdx ? "rgba(255, 193, 7, 0.55)" : "rgba(88, 166, 255, 0.32)";
+            ctx.fillRect(W - w, y, w, barH);
+          }
+
+          // POC line label
+          const pocY = H - (pocIdx + 0.5) * slotH;
+          ctx.strokeStyle = "rgba(255, 193, 7, 0.7)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, pocY);
+          ctx.lineTo(W - maxBarWidth - 2, pocY);
+          ctx.stroke();
+
+          ctx.fillStyle = "rgba(255, 193, 7, 0.9)";
+          ctx.font = "10px ui-monospace, monospace";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          ctx.fillText("POC", 6, pocY - 8);
+        }
+
+        setVolumeProfile(on) {
+          this.showVolumeProfile = !!on;
+          if (!on) this._clearOverlay();
+        }
+
+        setCandles(candles)  {
+          if (!this.chart) return;
+          this.chart.setCandles(JSON.stringify(candles));
+          this._candleCache = candles.slice();
+          this.fitToData();
+        }
+        addCandle(c)         {
+          if (!this.chart) return;
+          this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v);
+          if (this._candleCache && this._candleCache.length > 0) {
+            const last = this._candleCache[this._candleCache.length - 1];
+            if (last.time === c.time) this._candleCache[this._candleCache.length - 1] = c;
+            else this._candleCache.push(c);
+          } else {
+            this._candleCache = [c];
+          }
+        }
+        getCachedCandles()   { return this._candleCache || []; }
+        getViewportInfo()    {
+          if (!this.chart) return null;
+          const info = this.chart.getViewportInfo();
+          if (!info) return null;
+          return typeof info === "string" ? JSON.parse(info) : info;
+        }
         fitToData()          { this.chart?.fitToData(); }
         setLogScale(on)      { this.chart?.setLogScale(on); }
         setPriceLocked(on)   { this.chart?.setPriceLocked(on); }
@@ -700,6 +839,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           chartType:     "candlestick",
           logScale:      false,
           axisLocked:    false,
+          showVolumeProfile: false,
           darkMode:      true,
 
           // Playback mode: off | simulate | replay
@@ -763,6 +903,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.key === "f" || e.key === "F") this.fitToData();
               if (e.key === "l" || e.key === "L") this.toggleLogScale();
               if (e.key === "a" || e.key === "A") this.toggleAxisLock();
+              if (e.key === "v" || e.key === "V") this.toggleVolumeProfile();
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
           },
@@ -788,6 +929,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setLogScale(this.logScale);
             this.chart.setTheme(this.darkMode);
             this.chart.setPriceLocked(this.axisLocked);
+            this.chart.setVolumeProfile(this.showVolumeProfile);
             const wasmStyle = (this.chartType === "ha" || this.chartType === "renko") ? "candlestick" : this.chartType;
             this.chart.setCandleStyle(wasmStyle);
             this._loadCandles(tf);
@@ -831,6 +973,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           toggleAxisLock() {
             this.axisLocked = !this.axisLocked;
             this.chart?.setPriceLocked(this.axisLocked);
+          },
+
+          toggleVolumeProfile() {
+            this.showVolumeProfile = !this.showVolumeProfile;
+            this.chart?.setVolumeProfile(this.showVolumeProfile);
           },
 
           toggleTheme() {
