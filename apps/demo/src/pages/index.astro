@@ -293,6 +293,15 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>VP</span>
       </button>
 
+      <!-- Strategy overlay (SMA crossover entries/exits) -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleStrategy()"
+              x-bind:class="showStrategy ? 'active' : ''"
+              title="Strategy overlay (S) — SMA crossover entry/exit markers">
+        <span>▲▼</span>
+        <span>Strategy</span>
+      </button>
+
       <div class="sep"></div>
 
       <!-- OHLCV crosshair info -->
@@ -477,7 +486,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing · Alerts · Replay · Layouts · Volume Profile · 7 chart types · Log · Axis lock</span>
+        <span>Drawing · Alerts · Replay · Layouts · VPVR · Strategy · 7 chart types</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -702,12 +711,28 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const loop = () => {
             if (this.chart) {
               this.chart.render();
-              if (this.showVolumeProfile) this._drawVolumeProfile();
-              else this._clearOverlay();
+              if (this.showVolumeProfile || this.showStrategy) {
+                this._clearOverlay();
+                this._ensureOverlaySize();
+                if (this.showVolumeProfile) this._drawVolumeProfile();
+                if (this.showStrategy)      this._drawStrategy();
+              } else if (this._overlayDirty) {
+                this._clearOverlay();
+                this._overlayDirty = false;
+              }
             }
             this.rafId = requestAnimationFrame(loop);
           };
           this.rafId = requestAnimationFrame(loop);
+        }
+
+        _ensureOverlaySize() {
+          const vp = this.getViewportInfo();
+          if (!vp || !this.overlayCanvas) return;
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          if (this.overlayCanvas.width !== W * dpr) this.overlayCanvas.width = W * dpr;
+          if (this.overlayCanvas.height !== H * dpr) this.overlayCanvas.height = H * dpr;
         }
 
         _clearOverlay() {
@@ -794,7 +819,131 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         setVolumeProfile(on) {
           this.showVolumeProfile = !!on;
-          if (!on) this._clearOverlay();
+          this._overlayDirty = true;
+        }
+
+        setStrategy(on) {
+          this.showStrategy = !!on;
+          this._overlayDirty = true;
+        }
+
+        _drawStrategy() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || !candles.length || candles.length < 21) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          // Linear time→x / price→y (matches non-log chart)
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const pMin = vp.price.min, pMax = vp.price.max;
+          const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
+          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+
+          // Compute SMAs incrementally
+          const FAST = 5, SLOW = 20;
+          const fast = new Array(candles.length);
+          const slow = new Array(candles.length);
+          let sumF = 0, sumS = 0;
+          for (let i = 0; i < candles.length; i++) {
+            sumF += candles[i].c;
+            if (i >= FAST) sumF -= candles[i - FAST].c;
+            if (i >= FAST - 1) fast[i] = sumF / FAST;
+            sumS += candles[i].c;
+            if (i >= SLOW) sumS -= candles[i - SLOW].c;
+            if (i >= SLOW - 1) slow[i] = sumS / SLOW;
+          }
+
+          // Helper: build polyline of visible points
+          const buildLine = (arr) => {
+            const pts = [];
+            for (let i = 0; i < candles.length; i++) {
+              if (arr[i] == null) continue;
+              const t = candles[i].time;
+              if (t < tStart || t > tEnd) continue;
+              pts.push([t2x(t), p2y(arr[i])]);
+            }
+            return pts;
+          };
+
+          const drawLine = (pts, color, width) => {
+            if (pts.length < 2) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
+          };
+
+          drawLine(buildLine(fast), "rgba(88,166,255,0.85)", 1.5);
+          drawLine(buildLine(slow), "rgba(227,179,65,0.85)", 1.5);
+
+          // Find crossovers and draw entry/exit markers
+          let lastSig = null;
+          for (let i = SLOW; i < candles.length; i++) {
+            const t = candles[i].time;
+            if (t < tStart || t > tEnd) continue;
+            const prevD = (fast[i-1] ?? 0) - (slow[i-1] ?? 0);
+            const curD  = (fast[i]   ?? 0) - (slow[i]   ?? 0);
+            let kind = null;
+            if (prevD <= 0 && curD > 0) kind = "buy";
+            else if (prevD >= 0 && curD < 0) kind = "sell";
+            if (!kind) continue;
+            if (lastSig === kind) continue; // dedupe consecutive same-direction
+            lastSig = kind;
+
+            const x = t2x(t);
+            const y = p2y(candles[i].c);
+
+            // Triangle marker
+            ctx.beginPath();
+            if (kind === "buy") {
+              // Up triangle below candle
+              const yT = y + 14;
+              ctx.moveTo(x, yT);
+              ctx.lineTo(x - 6, yT + 9);
+              ctx.lineTo(x + 6, yT + 9);
+              ctx.closePath();
+              ctx.fillStyle = "rgba(63,185,80,0.95)";
+              ctx.fill();
+              ctx.fillStyle = "#fff";
+              ctx.font = "bold 9px ui-monospace, monospace";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("B", x, yT + 6);
+            } else {
+              // Down triangle above candle
+              const yT = y - 14;
+              ctx.moveTo(x, yT);
+              ctx.lineTo(x - 6, yT - 9);
+              ctx.lineTo(x + 6, yT - 9);
+              ctx.closePath();
+              ctx.fillStyle = "rgba(248,81,73,0.95)";
+              ctx.fill();
+              ctx.fillStyle = "#fff";
+              ctx.font = "bold 9px ui-monospace, monospace";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("S", x, yT - 6);
+            }
+          }
+
+          // Legend
+          ctx.font = "10px ui-monospace, monospace";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          ctx.fillStyle = "rgba(88,166,255,0.9)";
+          ctx.fillText("— SMA 5",  8, 8);
+          ctx.fillStyle = "rgba(227,179,65,0.9)";
+          ctx.fillText("— SMA 20", 8, 22);
+          ctx.fillStyle = "rgba(150,160,170,0.7)";
+          ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
         }
 
         setCandles(candles)  {
@@ -840,6 +989,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           logScale:      false,
           axisLocked:    false,
           showVolumeProfile: false,
+          showStrategy:  false,
           darkMode:      true,
 
           // Playback mode: off | simulate | replay
@@ -904,6 +1054,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.key === "l" || e.key === "L") this.toggleLogScale();
               if (e.key === "a" || e.key === "A") this.toggleAxisLock();
               if (e.key === "v" || e.key === "V") this.toggleVolumeProfile();
+              if (e.key === "s" || e.key === "S") this.toggleStrategy();
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
           },
@@ -930,6 +1081,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setTheme(this.darkMode);
             this.chart.setPriceLocked(this.axisLocked);
             this.chart.setVolumeProfile(this.showVolumeProfile);
+            this.chart.setStrategy(this.showStrategy);
             const wasmStyle = (this.chartType === "ha" || this.chartType === "renko") ? "candlestick" : this.chartType;
             this.chart.setCandleStyle(wasmStyle);
             this._loadCandles(tf);
@@ -978,6 +1130,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           toggleVolumeProfile() {
             this.showVolumeProfile = !this.showVolumeProfile;
             this.chart?.setVolumeProfile(this.showVolumeProfile);
+          },
+
+          toggleStrategy() {
+            this.showStrategy = !this.showStrategy;
+            this.chart?.setStrategy(this.showStrategy);
           },
 
           toggleTheme() {
@@ -1142,6 +1299,47 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.lastPrice = close;
             this.priceDir = prev == null ? "" : (close > prev ? "up" : close < prev ? "dn" : "");
             this._checkAlerts(close);
+            this._checkStrategySignal();
+          },
+
+          // ── Indicator alert: SMA crossover on last candle ─────
+          _checkStrategySignal() {
+            if (!this.showStrategy) return;
+            const candles = this.chart?.getCachedCandles() || [];
+            if (candles.length < 21) return;
+            const fastAt = (idx) => {
+              if (idx < 4) return null;
+              let s = 0;
+              for (let i = idx - 4; i <= idx; i++) s += candles[i].c;
+              return s / 5;
+            };
+            const slowAt = (idx) => {
+              if (idx < 19) return null;
+              let s = 0;
+              for (let i = idx - 19; i <= idx; i++) s += candles[i].c;
+              return s / 20;
+            };
+            const n = candles.length - 1;
+            const fNow = fastAt(n), sNow = slowAt(n);
+            const fPrev = fastAt(n - 1), sPrev = slowAt(n - 1);
+            if (fNow == null || sNow == null || fPrev == null || sPrev == null) return;
+            const prevD = fPrev - sPrev;
+            const curD  = fNow - sNow;
+            let kind = null;
+            if (prevD <= 0 && curD > 0) kind = "buy";
+            else if (prevD >= 0 && curD < 0) kind = "sell";
+            if (!kind) return;
+            this._fireSignal(kind, candles[n].c);
+          },
+
+          _fireSignal(kind, price) {
+            this.alertFlash = true;
+            setTimeout(() => { this.alertFlash = false; }, 800);
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(`LoomChart ${kind.toUpperCase()} signal`, {
+                body: `SMA crossover at ${price.toFixed(2)}`,
+              });
+            }
           },
 
           // ── Layouts ───────────────────────────────────────────
