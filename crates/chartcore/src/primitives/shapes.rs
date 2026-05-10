@@ -13,6 +13,10 @@ pub enum CandleStyle {
     OHLC,
     /// Hollow candlestick (outline only)
     Hollow,
+    /// Line connecting close prices
+    Line,
+    /// Filled area below close-price line
+    Area,
 }
 
 impl Default for CandleStyle {

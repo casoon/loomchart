@@ -245,9 +245,11 @@ impl WasmChart {
             "candlestick" => crate::primitives::CandleStyle::Candlestick,
             "ohlc" => crate::primitives::CandleStyle::OHLC,
             "hollow" => crate::primitives::CandleStyle::Hollow,
+            "line" => crate::primitives::CandleStyle::Line,
+            "area" => crate::primitives::CandleStyle::Area,
             _ => {
                 return Err(JsValue::from_str(
-                    "Invalid candle style. Use: candlestick, ohlc, or hollow",
+                    "Invalid candle style. Use: candlestick, ohlc, hollow, line, or area",
                 ))
             }
         };
@@ -268,6 +270,20 @@ impl WasmChart {
     #[wasm_bindgen(js_name = isLogScale)]
     pub fn is_log_scale(&self) -> bool {
         self.state.viewport.log_scale
+    }
+
+    /// Lock or unlock the price axis. When locked, fit_to_data() and reloading
+    /// candles will leave the price range unchanged.
+    #[wasm_bindgen(js_name = setPriceLocked)]
+    pub fn set_price_locked(&mut self, locked: bool) {
+        self.state.viewport.price_locked = locked;
+        self.state.mark_dirty();
+    }
+
+    /// Query current price axis lock state
+    #[wasm_bindgen(js_name = isPriceLocked)]
+    pub fn is_price_locked(&self) -> bool {
+        self.state.viewport.price_locked
     }
 
     /// Switch between dark and light theme
@@ -483,53 +499,59 @@ impl WasmChart {
 
             let candle_style = self.state.options.candle_style;
 
-            for candle in visible_candles {
-                let x = vp.time_to_x(candle.time);
-                let open_y = vp.price_to_y(candle.o);
-                let high_y = vp.price_to_y(candle.h);
-                let low_y = vp.price_to_y(candle.l);
-                let close_y = vp.price_to_y(candle.c);
-                let width = bar_width / pixel_ratio; // Convert back to CSS pixels
+            match candle_style {
+                crate::primitives::CandleStyle::Line | crate::primitives::CandleStyle::Area => {
+                    // Render as polyline / filled area through close prices
+                    let points: Vec<(f64, f64)> = visible_candles
+                        .iter()
+                        .map(|c| (vp.time_to_x(c.time), vp.price_to_y(c.c)))
+                        .collect();
 
-                match candle_style {
-                    crate::primitives::CandleStyle::Candlestick => {
-                        renderer.draw_candle(
-                            x,
-                            open_y,
-                            high_y,
-                            low_y,
-                            close_y,
-                            width,
-                            bullish_color,
-                            bearish_color,
-                            unchanged_color,
-                        );
+                    let line_color = bullish_color;
+                    if candle_style == crate::primitives::CandleStyle::Area {
+                        // Build a semi-transparent fill from the line color
+                        let fill = crate::primitives::Color {
+                            r: line_color.r,
+                            g: line_color.g,
+                            b: line_color.b,
+                            a: 0.15,
+                        };
+                        let baseline_y = vp.dimensions.height as f64;
+                        renderer.draw_area(&points, baseline_y, fill, line_color, 2.0);
+                    } else {
+                        renderer.draw_polyline(&points, line_color, 2.0);
                     }
-                    crate::primitives::CandleStyle::OHLC => {
-                        renderer.draw_ohlc(
-                            x,
-                            open_y,
-                            high_y,
-                            low_y,
-                            close_y,
-                            width,
-                            bullish_color,
-                            bearish_color,
-                            unchanged_color,
-                        );
-                    }
-                    crate::primitives::CandleStyle::Hollow => {
-                        renderer.draw_hollow_candle(
-                            x,
-                            open_y,
-                            high_y,
-                            low_y,
-                            close_y,
-                            width,
-                            bullish_color,
-                            bearish_color,
-                            unchanged_color,
-                        );
+                }
+                _ => {
+                    for candle in visible_candles {
+                        let x = vp.time_to_x(candle.time);
+                        let open_y = vp.price_to_y(candle.o);
+                        let high_y = vp.price_to_y(candle.h);
+                        let low_y = vp.price_to_y(candle.l);
+                        let close_y = vp.price_to_y(candle.c);
+                        let width = bar_width / pixel_ratio; // Convert back to CSS pixels
+
+                        match candle_style {
+                            crate::primitives::CandleStyle::Candlestick => {
+                                renderer.draw_candle(
+                                    x, open_y, high_y, low_y, close_y, width,
+                                    bullish_color, bearish_color, unchanged_color,
+                                );
+                            }
+                            crate::primitives::CandleStyle::OHLC => {
+                                renderer.draw_ohlc(
+                                    x, open_y, high_y, low_y, close_y, width,
+                                    bullish_color, bearish_color, unchanged_color,
+                                );
+                            }
+                            crate::primitives::CandleStyle::Hollow => {
+                                renderer.draw_hollow_candle(
+                                    x, open_y, high_y, low_y, close_y, width,
+                                    bullish_color, bearish_color, unchanged_color,
+                                );
+                            }
+                            _ => unreachable!(),
+                        }
                     }
                 }
             }

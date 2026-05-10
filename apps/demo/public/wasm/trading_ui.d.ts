@@ -101,6 +101,10 @@ export class WasmChart {
    */
   endPriceScale(): void;
   /**
+   * Query current price axis lock state
+   */
+  isPriceLocked(): boolean;
+  /**
    * Handle double click event
    */
   onDoubleClick(x: number, y: number): void;
@@ -112,6 +116,11 @@ export class WasmChart {
    * Set candle rendering style
    */
   setCandleStyle(style: string): void;
+  /**
+   * Lock or unlock the price axis. When locked, fit_to_data() and reloading
+   * candles will leave the price range unchanged.
+   */
+  setPriceLocked(locked: boolean): void;
   /**
    * Start time scaling - user clicked on time axis
    */
@@ -580,6 +589,7 @@ export interface InitOutput {
   readonly wasmchart_importState: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_isDirty: (a: number) => number;
   readonly wasmchart_isLogScale: (a: number) => number;
+  readonly wasmchart_isPriceLocked: (a: number) => number;
   readonly wasmchart_new: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly wasmchart_onDoubleClick: (a: number, b: number, c: number) => void;
   readonly wasmchart_onKeyDown: (a: number, b: number, c: number) => void;
@@ -601,6 +611,7 @@ export interface InitOutput {
   readonly wasmchart_setCandleStyle: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setCandles: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setLogScale: (a: number, b: number) => void;
+  readonly wasmchart_setPriceLocked: (a: number, b: number) => void;
   readonly wasmchart_setTheme: (a: number, b: number) => void;
   readonly wasmchart_startPriceScale: (a: number, b: number, c: number) => void;
   readonly wasmchart_startTimeScale: (a: number, b: number, c: number) => void;
@@ -620,9 +631,9 @@ export interface InitOutput {
   readonly wasmshannonentropy_next: (a: number, b: number) => number;
   readonly wasmshannonentropy_reset: (a: number) => void;
   readonly wasmchart_endTimeScale: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_366: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_109: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_365: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_368: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_111: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_367: (a: number, b: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export3: (a: number) => void;

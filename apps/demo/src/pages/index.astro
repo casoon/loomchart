@@ -156,6 +156,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
           { id: "ohlc",        label: "OHLC" },
           { id: "hollow",      label: "Hollow" },
           { id: "ha",          label: "Heikin Ashi" },
+          { id: "line",        label: "Line" },
+          { id: "area",        label: "Area" },
+          { id: "renko",       label: "Renko" },
         ].map(({ id, label }) => (
           <button
             class="btn btn-ghost ct-btn"
@@ -185,6 +188,15 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span x-text="logScale ? 'LOG ✓' : 'LOG'"></span>
       </button>
 
+      <!-- Axis lock toggle — prevents fit/zoom from changing price range -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleAxisLock()"
+              x-bind:class="axisLocked ? 'active' : ''"
+              title="Lock price axis (A) — prevents auto-fit from changing price range">
+        <span x-text="axisLocked ? '🔒' : '🔓'"></span>
+        <span>Axis</span>
+      </button>
+
       <div class="sep"></div>
 
       <!-- OHLCV crosshair info -->
@@ -202,7 +214,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <span class="text-[10px]" style="color:var(--dim)">
         <kbd class="px-1 rounded" style="background:var(--bg3)">F</kbd> fit &nbsp;
         <kbd class="px-1 rounded" style="background:var(--bg3)">L</kbd> log &nbsp;
-        <kbd class="px-1 rounded" style="background:var(--bg3)">Esc</kbd> cancel draw
+        <kbd class="px-1 rounded" style="background:var(--bg3)">A</kbd> lock &nbsp;
+        <kbd class="px-1 rounded" style="background:var(--bg3)">Esc</kbd> cancel
       </span>
     </div>
 
@@ -293,7 +306,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing tools · 4 chart types · Log scale · Theme</span>
+        <span>Drawing tools · 7 chart types · Log scale · Axis lock · Theme</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -315,6 +328,33 @@ const lastCandleJson = JSON.stringify(lastCandle);
           out.push({ time:c.time, o:ho, h:Math.max(c.h,ho,hc), l:Math.min(c.l,ho,hc), c:hc, v:c.v });
         }
         return out;
+      }
+
+      // Renko transform — fixed brick size (1% of starting price)
+      function toRenko(candles) {
+        if (candles.length === 0) return [];
+        const startPrice = candles[0].c;
+        const brick = startPrice * 0.01;
+        const bricks = [];
+        let last = startPrice;
+        let tOffset = 0;
+        for (const c of candles) {
+          while (c.c >= last + brick) {
+            const open = last;
+            const close = last + brick;
+            bricks.push({ time: c.time + tOffset, o: open, h: close, l: open, c: close, v: 0 });
+            last = close;
+            tOffset += 1;
+          }
+          while (c.c <= last - brick) {
+            const open = last;
+            const close = last - brick;
+            bricks.push({ time: c.time + tOffset, o: open, h: open, l: close, c: close, v: 0 });
+            last = close;
+            tOffset += 1;
+          }
+        }
+        return bricks;
       }
 
       let simSeed = 99999;
@@ -485,6 +525,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
         addCandle(c)         { if (!this.chart) return; this.chart.addCandle(BigInt(c.time), c.o, c.h, c.l, c.c, c.v); }
         fitToData()          { this.chart?.fitToData(); }
         setLogScale(on)      { this.chart?.setLogScale(on); }
+        setPriceLocked(on)   { this.chart?.setPriceLocked(on); }
         setTheme(dark)       { this.chart?.setTheme(dark); }
         setCandleStyle(s)    { this.chart?.setCandleStyle(s); }
         clearTools()         { this.chart?.clearTools(); }
@@ -499,6 +540,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           activeTf:      defaultTf,
           chartType:     "candlestick",
           logScale:      false,
+          axisLocked:    false,
           darkMode:      true,
           simRunning:    false,
           simInterval:   null,
@@ -531,6 +573,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.target !== document.body && e.target.tagName !== "BODY") return;
               if (e.key === "f" || e.key === "F") this.fitToData();
               if (e.key === "l" || e.key === "L") this.toggleLogScale();
+              if (e.key === "a" || e.key === "A") this.toggleAxisLock();
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
           },
@@ -539,7 +582,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
           _loadCandles(tf) {
             const raw = this._rawCandles(tf);
-            this.chart.setCandles(this.chartType === "ha" ? toHeikinAshi(raw) : raw);
+            let candles = raw;
+            if (this.chartType === "ha") candles = toHeikinAshi(raw);
+            else if (this.chartType === "renko") candles = toRenko(raw);
+            this.chart.setCandles(candles);
           },
 
           switchTimeframe(tf) {
@@ -551,7 +597,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
             // Re-apply current settings to new chart instance
             this.chart.setLogScale(this.logScale);
             this.chart.setTheme(this.darkMode);
-            this.chart.setCandleStyle(this.chartType === "ha" ? "candlestick" : this.chartType);
+            this.chart.setPriceLocked(this.axisLocked);
+            const wasmStyle = (this.chartType === "ha" || this.chartType === "renko") ? "candlestick" : this.chartType;
+            this.chart.setCandleStyle(wasmStyle);
             this._loadCandles(tf);
             const raw = this._rawCandles(tf);
             this.simLastCandle = { ...raw[raw.length-1] };
@@ -559,7 +607,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
           setChartType(type) {
             this.chartType = type;
-            this.chart.setCandleStyle(type === "ha" ? "candlestick" : type);
+            // HA + Renko reuse the candlestick renderer; line/area/ohlc/hollow map directly
+            const wasmStyle = (type === "ha" || type === "renko") ? "candlestick" : type;
+            this.chart.setCandleStyle(wasmStyle);
             this._loadCandles(this.activeTf);
           },
 
@@ -585,6 +635,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           toggleLogScale() {
             this.logScale = !this.logScale;
             this.chart?.setLogScale(this.logScale);
+          },
+
+          toggleAxisLock() {
+            this.axisLocked = !this.axisLocked;
+            this.chart?.setPriceLocked(this.axisLocked);
           },
 
           toggleTheme() {

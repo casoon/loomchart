@@ -43,6 +43,8 @@ pub struct Viewport {
     pub timeframe: Timeframe,
     /// Use logarithmic price scale
     pub log_scale: bool,
+    /// When true, fit_to_data() leaves the price range unchanged
+    pub price_locked: bool,
 }
 
 impl Viewport {
@@ -61,6 +63,7 @@ impl Viewport {
             },
             timeframe: Timeframe::M5,
             log_scale: false,
+            price_locked: false,
         }
     }
 
@@ -83,7 +86,10 @@ impl Viewport {
             end: time_range.end + padding,
         };
 
-        self.price = price_range;
+        // Respect axis lock: do not change price range when locked
+        if !self.price_locked {
+            self.price = price_range;
+        }
     }
 
     /// Pan by pixel delta

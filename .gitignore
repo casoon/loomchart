@@ -53,6 +53,7 @@ coverage/
 
 # Astro
 apps/frontend/.astro/
+apps/demo/.astro/
 target/
 
 # Temporary files

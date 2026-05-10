@@ -232,6 +232,50 @@ impl Canvas2DRenderer {
         self.ctx.stroke();
     }
 
+    /// Draw a polyline through a series of points (used for Line chart style)
+    pub fn draw_polyline(&mut self, points: &[(f64, f64)], color: Color, width: f64) {
+        if points.len() < 2 {
+            return;
+        }
+        self.set_stroke_color(color);
+        self.ctx.set_line_width(width);
+        self.ctx.set_line_join("round");
+        self.ctx.set_line_cap("round");
+        self.ctx.begin_path();
+        self.ctx.move_to(points[0].0, points[0].1);
+        for &(x, y) in &points[1..] {
+            self.ctx.line_to(x, y);
+        }
+        self.ctx.stroke();
+    }
+
+    /// Draw a filled area chart: polygon from baseline up to line, plus stroke on top
+    pub fn draw_area(
+        &mut self,
+        points: &[(f64, f64)],
+        baseline_y: f64,
+        fill: Color,
+        stroke: Color,
+        width: f64,
+    ) {
+        if points.len() < 2 {
+            return;
+        }
+        // Filled polygon below the line
+        self.set_fill_color(fill);
+        self.ctx.begin_path();
+        self.ctx.move_to(points[0].0, baseline_y);
+        for &(x, y) in points {
+            self.ctx.line_to(x, y);
+        }
+        self.ctx.line_to(points[points.len() - 1].0, baseline_y);
+        self.ctx.close_path();
+        self.ctx.fill();
+
+        // Stroke the top edge
+        self.draw_polyline(points, stroke, width);
+    }
+
     /// Draw a vertical line with pixel-perfect alignment (TradingView technique)
     pub fn draw_vertical_line(&mut self, x: f64, top: f64, bottom: f64, color: &Color, width: f64) {
         let line_width = (width * self.pixel_ratio).floor().max(1.0);
