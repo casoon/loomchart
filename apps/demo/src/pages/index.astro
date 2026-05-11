@@ -342,6 +342,23 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>Div</span>
       </button>
 
+      <!-- Patterns -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="togglePatterns()"
+              x-bind:class="showPatterns ? 'active' : ''"
+              title="Chart patterns (P) — double top / double bottom detection">
+        <span>⋂⋃</span>
+        <span>Patterns</span>
+      </button>
+
+      <!-- MTF indicator -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleMTF()"
+              x-bind:class="showMTF ? 'active' : ''"
+              title="Multi-timeframe SMA (M) — SMA20 from one timeframe higher">
+        <span>MTF</span>
+      </button>
+
       <!-- News overlay -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="toggleNews()"
@@ -535,7 +552,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing · Alerts · Replay · Layouts · VPVR / VPSV · Strategy · Divergence · News · 7 chart types</span>
+        <span>Drawing · Alerts · Replay · Layouts · VPVR · Strategy · Divergence · Patterns · MTF · News</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -840,13 +857,17 @@ const lastCandleJson = JSON.stringify(lastCandle);
             if (this.chart) {
               this.chart.render();
               const anyOverlay = this.showVolumeProfile || this.vpMode === "vpsv"
-                              || this.showStrategy || this.showNews || this.showDivergence;
+                              || this.showStrategy || this.showNews
+                              || this.showDivergence || this.showPatterns
+                              || this.showMTF;
               if (anyOverlay) {
                 this._clearOverlay();
                 this._ensureOverlaySize();
                 if (this.vpMode === "vpsv")        this._drawVolumeProfileSession();
                 else if (this.showVolumeProfile)   this._drawVolumeProfile();
+                if (this.showPatterns)             this._drawPatterns();
                 if (this.showDivergence)           this._drawDivergence();
+                if (this.showMTF)                  this._drawMTF();
                 if (this.showStrategy)             this._drawStrategy();
                 if (this.showNews)                 this._drawNews();
               } else if (this._overlayDirty) {
@@ -1110,6 +1131,159 @@ const lastCandleJson = JSON.stringify(lastCandle);
           }
         }
 
+        _drawPatterns() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || candles.length < 30) return;
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const pMin = vp.price.min, pMax = vp.price.max;
+          const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
+          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+
+          if (!this._cachedPatterns || this._cachedPatterns.len !== candles.length) {
+            const pivots = findPivots(candles, 4, 4);
+            const patterns = [];
+
+            // Double tops
+            for (let k = 1; k < pivots.highs.length; k++) {
+              const a = pivots.highs[k - 1], b = pivots.highs[k];
+              if (b - a < 5 || b - a > 80) continue;
+              const ha = candles[a].h, hb = candles[b].h;
+              if (Math.abs(ha - hb) / ha > 0.015) continue;
+              // Find lowest low between a and b
+              let minLow = Infinity, minIdx = -1;
+              for (let i = a + 1; i < b; i++) if (candles[i].l < minLow) { minLow = candles[i].l; minIdx = i; }
+              if (minIdx === -1) continue;
+              if ((Math.min(ha, hb) - minLow) / Math.min(ha, hb) < 0.015) continue;
+              patterns.push({ kind: "double-top", a, b, neckIdx: minIdx, neckPrice: minLow, topPrice: Math.max(ha, hb) });
+            }
+
+            // Double bottoms
+            for (let k = 1; k < pivots.lows.length; k++) {
+              const a = pivots.lows[k - 1], b = pivots.lows[k];
+              if (b - a < 5 || b - a > 80) continue;
+              const la = candles[a].l, lb = candles[b].l;
+              if (Math.abs(la - lb) / la > 0.015) continue;
+              let maxHigh = -Infinity, maxIdx = -1;
+              for (let i = a + 1; i < b; i++) if (candles[i].h > maxHigh) { maxHigh = candles[i].h; maxIdx = i; }
+              if (maxIdx === -1) continue;
+              if ((maxHigh - Math.max(la, lb)) / Math.max(la, lb) < 0.015) continue;
+              patterns.push({ kind: "double-bottom", a, b, neckIdx: maxIdx, neckPrice: maxHigh, topPrice: Math.min(la, lb) });
+            }
+
+            this._cachedPatterns = { len: candles.length, patterns };
+          }
+
+          for (const p of this._cachedPatterns.patterns) {
+            const ca = candles[p.a], cb = candles[p.b], cn = candles[p.neckIdx];
+            if (cb.time < tStart || ca.time > tEnd) continue;
+
+            const xa = t2x(ca.time);
+            const xb = t2x(cb.time);
+            const xn = t2x(cn.time);
+            const isTop = p.kind === "double-top";
+            const ya = p2y(isTop ? ca.h : ca.l);
+            const yb = p2y(isTop ? cb.h : cb.l);
+            const yn = p2y(p.neckPrice);
+            const color = isTop ? "rgba(248,81,73,0.85)" : "rgba(63,185,80,0.85)";
+
+            // Arc connecting two peaks/troughs
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(xa, ya);
+            ctx.quadraticCurveTo((xa + xb) / 2, isTop ? ya - 20 : ya + 20, xb, yb);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Neckline
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(xa, yn);
+            ctx.lineTo(xb, yn);
+            ctx.stroke();
+
+            // Label
+            ctx.font = "bold 10px ui-monospace, monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = color;
+            const labelY = isTop ? Math.min(ya, yb) - 12 : Math.max(ya, yb) + 14;
+            ctx.fillText(isTop ? "Double Top" : "Double Bottom", (xa + xb) / 2, labelY);
+          }
+        }
+
+        setPatterns(on) {
+          this.showPatterns = !!on;
+          this._cachedPatterns = null;
+          this._overlayDirty = true;
+        }
+
+        setMTF(on, higherCandles, higherTfLabel) {
+          this.showMTF = !!on;
+          this._mtfCandles = higherCandles || null;
+          this._mtfTfLabel = higherTfLabel || "";
+          this._overlayDirty = true;
+        }
+
+        _drawMTF() {
+          if (!this._mtfCandles?.length) return;
+          const vp = this.getViewportInfo();
+          if (!vp) return;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const dpr = window.devicePixelRatio || 1;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const pMin = vp.price.min, pMax = vp.price.max;
+          const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
+          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+
+          // SMA(20) on higher-tf candles
+          const period = 20;
+          const n = this._mtfCandles.length;
+          if (n < period) return;
+          const sma = new Array(n).fill(null);
+          let sum = 0;
+          for (let i = 0; i < n; i++) {
+            sum += this._mtfCandles[i].c;
+            if (i >= period) sum -= this._mtfCandles[i - period].c;
+            if (i >= period - 1) sma[i] = sum / period;
+          }
+
+          const pts = [];
+          for (let i = 0; i < n; i++) {
+            if (sma[i] == null) continue;
+            const t = this._mtfCandles[i].time;
+            if (t < tStart || t > tEnd) continue;
+            pts.push([t2x(t), p2y(sma[i])]);
+          }
+          if (pts.length < 2) return;
+
+          ctx.strokeStyle = "rgba(255, 140, 0, 0.9)";
+          ctx.lineWidth = 2.5;
+          ctx.lineJoin = "round";
+          ctx.lineCap  = "round";
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.stroke();
+
+          ctx.font = "10px ui-monospace, monospace";
+          ctx.fillStyle = "rgba(255, 140, 0, 0.95)";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          ctx.fillText(`— SMA 20 (${this._mtfTfLabel})`, 8, 50);
+        }
+
         _drawDivergence() {
           const vp = this.getViewportInfo();
           const candles = this.getCachedCandles();
@@ -1261,6 +1435,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
           showStrategy:  false,
           showNews:      false,
           showDivergence: false,
+          showPatterns:  false,
+          showMTF:       false,
           darkMode:      true,
 
           // Playback mode: off | simulate | replay
@@ -1332,6 +1508,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.key === "v" || e.key === "V") this.toggleVolumeProfile();
               if (e.key === "s" || e.key === "S") this.toggleStrategy();
               if (e.key === "d" || e.key === "D") this.toggleDivergence();
+              if (e.key === "p" || e.key === "P") this.togglePatterns();
+              if (e.key === "m" || e.key === "M") this.toggleMTF();
               if (e.key === "n" || e.key === "N") this.toggleNews();
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
@@ -1361,6 +1539,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setVPMode(this.vpMode);
             this.chart.setStrategy(this.showStrategy);
             this.chart.setDivergence(this.showDivergence);
+            this.chart.setPatterns(this.showPatterns);
+            this._applyMTF();
             // Rebuild news cache for this timeframe
             this._newsCache = makeNewsEvents(this._rawCandles(tf));
             this._newsCacheTf = tf;
@@ -1438,6 +1618,32 @@ const lastCandleJson = JSON.stringify(lastCandle);
           toggleDivergence() {
             this.showDivergence = !this.showDivergence;
             this.chart?.setDivergence(this.showDivergence);
+          },
+
+          togglePatterns() {
+            this.showPatterns = !this.showPatterns;
+            this.chart?.setPatterns(this.showPatterns);
+          },
+
+          toggleMTF() {
+            this.showMTF = !this.showMTF;
+            this._applyMTF();
+          },
+
+          _applyMTF() {
+            if (!this.showMTF) { this.chart?.setMTF(false, null, ""); return; }
+            const order = ["1m","5m","15m","1h","4h","1d"];
+            const idx = order.indexOf(this.activeTf);
+            if (idx < 0 || idx >= order.length - 1) {
+              // No higher tf available; just label "n/a"
+              this.chart?.setMTF(true, [], "n/a");
+              return;
+            }
+            // Step up by 2 levels if available, else 1
+            const targetIdx = Math.min(order.length - 1, idx + 2);
+            const higherTf = order[targetIdx];
+            const higherCandles = ALL_CANDLES[higherTf] || [];
+            this.chart?.setMTF(true, higherCandles, higherTf);
           },
 
           toggleTheme() {
