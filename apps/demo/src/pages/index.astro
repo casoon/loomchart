@@ -145,8 +145,15 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <span class="font-semibold text-sm" style="color:var(--accent);letter-spacing:.04em">LoomChart</span>
       <div class="sep"></div>
 
-      <!-- Symbol + live price -->
-      <span class="text-sm font-medium" style="color:var(--fg)">BTC / USD</span>
+      <!-- Symbol selector (#31) -->
+      <button class="btn btn-ghost flex items-center gap-1 text-sm font-medium px-2 py-0.5 rounded"
+              x-on:click="symbolsOpen = !symbolsOpen"
+              x-bind:class="symbolsOpen ? 'active' : ''"
+              style="color:var(--fg)"
+              title="Search symbols">
+        <span x-text="selectedSymbol"></span>
+        <span style="font-size:9px;color:var(--muted)">▾</span>
+      </button>
       <span class="text-sm font-semibold tabular-nums"
             x-show="lastPrice !== null"
             x-text="fmt(lastPrice)"
@@ -200,6 +207,35 @@ const lastCandleJson = JSON.stringify(lastCandle);
         </svg>
       </a>
     </header>
+
+    <!-- Symbols popover (#31 + #32 — search + watchlist) -->
+    <div class="popover" x-show="symbolsOpen" x-cloak x-on:click.outside="symbolsOpen = false"
+         style="top:42px;left:120px;right:auto;min-width:320px">
+      <h4>Find symbol</h4>
+      <div class="popover-row" style="border:none">
+        <input class="popover-input" type="text" placeholder="Search BTC, AAPL, EUR…"
+               x-model="symbolQuery" autofocus>
+      </div>
+      <h4 style="margin-top:8px">Watchlist · live demo prices</h4>
+      <template x-for="s in filteredSymbols()" x-bind:key="s.sym">
+        <div class="popover-row" x-on:click="selectSymbol(s)" style="cursor:pointer">
+          <span class="layout-item">
+            <span x-text="s.sym" style="font-weight:600"></span>
+            <small x-text="s.name"></small>
+          </span>
+          <span class="tabular-nums" style="font-size:11px" x-text="fmt(s.last)"></span>
+          <span class="tabular-nums" style="font-size:10px;min-width:42px;text-align:right"
+                x-bind:class="s.ch >= 0 ? 'ohlcv-up' : 'ohlcv-down'"
+                x-text="(s.ch >= 0 ? '+' : '') + s.ch.toFixed(2) + '%'"></span>
+        </div>
+      </template>
+      <template x-if="filteredSymbols().length === 0">
+        <div style="font-size:11px;color:var(--dim);padding:4px 0">No matches</div>
+      </template>
+      <div style="font-size:10px;color:var(--dim);padding-top:6px;border-top:1px solid var(--border);margin-top:6px">
+        Mock data · chart shows BTC dataset regardless of selection
+      </div>
+    </div>
 
     <!-- Layouts popover -->
     <div class="popover" x-show="layoutsOpen" x-cloak x-on:click.outside="layoutsOpen = false">
@@ -278,20 +314,15 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>Axis</span>
       </button>
 
-      <!-- Volume profile (VPVR) toggle -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="toggleVolumeProfile()"
-              x-bind:class="showVolumeProfile ? 'active' : ''"
-              title="Volume Profile Visible Range (V) — shows volume distribution by price">
-        <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor">
-          <rect x="0" y="1" width="3"  height="1.4"/>
-          <rect x="0" y="3" width="7"  height="1.4"/>
-          <rect x="0" y="5" width="10" height="1.4"/>
-          <rect x="0" y="7" width="5"  height="1.4"/>
-          <rect x="0" y="9" width="2"  height="1.4"/>
-        </svg>
-        <span>VP</span>
-      </button>
+      <!-- Volume profile mode selector: off / VPVR / VPSV -->
+      <div class="seg-group" title="Volume Profile (V) — VPVR: visible range · VPSV: session (last 24h)">
+        <button class="seg-btn" x-on:click="setVPMode('off')"
+                x-bind:class="vpMode === 'off' ? 'active' : ''">VP off</button>
+        <button class="seg-btn" x-on:click="setVPMode('vpvr')"
+                x-bind:class="vpMode === 'vpvr' ? 'active' : ''">VPVR</button>
+        <button class="seg-btn" x-on:click="setVPMode('vpsv')"
+                x-bind:class="vpMode === 'vpsv' ? 'active' : ''">VPSV</button>
+      </div>
 
       <!-- Strategy overlay (SMA crossover entries/exits) -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
@@ -300,6 +331,24 @@ const lastCandleJson = JSON.stringify(lastCandle);
               title="Strategy overlay (S) — SMA crossover entry/exit markers">
         <span>▲▼</span>
         <span>Strategy</span>
+      </button>
+
+      <!-- Divergence detection -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleDivergence()"
+              x-bind:class="showDivergence ? 'active' : ''"
+              title="Divergence detection (D) — RSI vs. price divergences">
+        <span>↗↘</span>
+        <span>Div</span>
+      </button>
+
+      <!-- News overlay -->
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="toggleNews()"
+              x-bind:class="showNews ? 'active' : ''"
+              title="News overlay (N) — macro events on chart">
+        <span>📰</span>
+        <span>News</span>
       </button>
 
       <div class="sep"></div>
@@ -486,7 +535,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             style="height:26px;border-color:var(--border);background:var(--bg2);color:var(--dim)">
       <span>Scroll to zoom · Drag to pan · Double-click to fit</span>
       <span class="flex items-center gap-2">
-        <span>Drawing · Alerts · Replay · Layouts · VPVR · Strategy · 7 chart types</span>
+        <span>Drawing · Alerts · Replay · Layouts · VPVR / VPSV · Strategy · Divergence · News · 7 chart types</span>
         <span style="color:var(--border)">·</span>
         <span style="color:var(--accent)">Rust + WebAssembly</span>
       </span>
@@ -541,6 +590,85 @@ const lastCandleJson = JSON.stringify(lastCandle);
       function simRand() {
         simSeed = (Math.imul(1664525, simSeed) + 1013904223) | 0;
         return (simSeed >>> 0) / 0x100000000;
+      }
+
+      // Mock symbol catalog for the symbol-search / watchlist UI
+      const MOCK_SYMBOLS = [
+        { sym: "BTC/USD",  name: "Bitcoin",            last: 68432.12, ch:  1.24 },
+        { sym: "ETH/USD",  name: "Ethereum",           last: 3567.45,  ch: -0.43 },
+        { sym: "SOL/USD",  name: "Solana",             last: 156.78,   ch:  3.21 },
+        { sym: "AAPL",     name: "Apple Inc.",         last: 187.32,   ch:  0.12 },
+        { sym: "NVDA",     name: "NVIDIA Corp.",       last: 928.50,   ch:  2.31 },
+        { sym: "TSLA",     name: "Tesla Inc.",         last: 245.66,   ch: -1.87 },
+        { sym: "MSFT",     name: "Microsoft",          last: 412.34,   ch:  0.56 },
+        { sym: "GOOGL",    name: "Alphabet",           last: 156.78,   ch:  0.34 },
+        { sym: "EUR/USD",  name: "Euro vs Dollar",     last: 1.0823,   ch: -0.12 },
+        { sym: "GBP/USD",  name: "Pound vs Dollar",    last: 1.2645,   ch:  0.08 },
+        { sym: "XAU/USD",  name: "Gold spot",          last: 2367.45,  ch:  0.45 },
+        { sym: "WTI",      name: "Crude Oil",          last: 76.32,    ch: -1.23 },
+      ];
+
+      // Wilder's RSI(period) over candle closes; returns array same length as input, with leading nulls
+      function computeRSI(candles, period = 14) {
+        const n = candles.length;
+        const rsi = new Array(n).fill(null);
+        if (n <= period) return rsi;
+        let gain = 0, loss = 0;
+        for (let i = 1; i <= period; i++) {
+          const d = candles[i].c - candles[i - 1].c;
+          if (d >= 0) gain += d; else loss -= d;
+        }
+        let avgG = gain / period, avgL = loss / period;
+        rsi[period] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+        for (let i = period + 1; i < n; i++) {
+          const d = candles[i].c - candles[i - 1].c;
+          const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+          avgG = (avgG * (period - 1) + g) / period;
+          avgL = (avgL * (period - 1) + l) / period;
+          rsi[i] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+        }
+        return rsi;
+      }
+
+      // Pivot detection with 'left'/'right' lookback on candle high/low
+      function findPivots(candles, left = 3, right = 3) {
+        const highs = [], lows = [];
+        const n = candles.length;
+        for (let i = left; i < n - right; i++) {
+          let hMax = true, lMin = true;
+          for (let k = i - left; k <= i + right; k++) {
+            if (k === i) continue;
+            if (candles[k].h >= candles[i].h) hMax = false;
+            if (candles[k].l <= candles[i].l) lMin = false;
+          }
+          if (hMax) highs.push(i);
+          if (lMin) lows.push(i);
+        }
+        return { highs, lows };
+      }
+
+      // Synthetic news events anchored to candle indices — generated once per (tf, count)
+      function makeNewsEvents(candles) {
+        if (!candles.length) return [];
+        const titles = [
+          { t: "Fed releases FOMC minutes",              s: "warn" },
+          { t: "CPI prints hotter than expected",        s: "warn" },
+          { t: "ECB statement: rate hold",               s: "info" },
+          { t: "Major exchange outage reported",         s: "crit" },
+          { t: "Whale wallet activity spike",            s: "info" },
+          { t: "Crypto bill passes committee",           s: "info" },
+          { t: "Stablecoin de-peg headlines",            s: "crit" },
+          { t: "BoJ pivot speculation",                  s: "warn" },
+          { t: "Mining hash-rate ATH",                   s: "info" },
+        ];
+        // Place ~1 event per 12% of the dataset
+        const out = [];
+        const step = Math.max(8, Math.floor(candles.length / titles.length));
+        for (let i = 0; i < titles.length; i++) {
+          const idx = Math.min(candles.length - 1, i * step + Math.floor(step / 2));
+          out.push({ time: candles[idx].time, ...titles[i] });
+        }
+        return out;
       }
 
       // ── Thin WASM chart wrapper ──────────────────────────────
@@ -711,11 +839,16 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const loop = () => {
             if (this.chart) {
               this.chart.render();
-              if (this.showVolumeProfile || this.showStrategy) {
+              const anyOverlay = this.showVolumeProfile || this.vpMode === "vpsv"
+                              || this.showStrategy || this.showNews || this.showDivergence;
+              if (anyOverlay) {
                 this._clearOverlay();
                 this._ensureOverlaySize();
-                if (this.showVolumeProfile) this._drawVolumeProfile();
-                if (this.showStrategy)      this._drawStrategy();
+                if (this.vpMode === "vpsv")        this._drawVolumeProfileSession();
+                else if (this.showVolumeProfile)   this._drawVolumeProfile();
+                if (this.showDivergence)           this._drawDivergence();
+                if (this.showStrategy)             this._drawStrategy();
+                if (this.showNews)                 this._drawNews();
               } else if (this._overlayDirty) {
                 this._clearOverlay();
                 this._overlayDirty = false;
@@ -744,33 +877,27 @@ const lastCandleJson = JSON.stringify(lastCandle);
         _drawVolumeProfile() {
           const vp = this.getViewportInfo();
           const candles = this.getCachedCandles();
-          if (!vp || !this.overlayCanvas || candles.length === 0) return;
-
-          const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width;
-          const H = vp.dimensions.height;
-
-          if (this.overlayCanvas.width !== W * dpr) this.overlayCanvas.width = W * dpr;
-          if (this.overlayCanvas.height !== H * dpr) this.overlayCanvas.height = H * dpr;
-
-          const ctx = this.overlayCanvas.getContext("2d");
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.clearRect(0, 0, W, H);
-
-          // Visible candles
+          if (!vp || candles.length === 0) return;
           const tStart = vp.time.start, tEnd = vp.time.end;
           const visible = candles.filter(c => c.time >= tStart && c.time <= tEnd);
-          if (visible.length === 0) return;
+          this._drawVPCore(visible, "VPVR");
+        }
 
-          // Build bins across visible price range
+        _drawVPCore(candles, label) {
+          const vp = this.getViewportInfo();
+          if (!vp || !this.overlayCanvas || !candles?.length) return;
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
           const NUM_BINS = 28;
           const pMin = vp.price.min, pMax = vp.price.max;
           const binSize = (pMax - pMin) / NUM_BINS;
           if (binSize <= 0) return;
           const bins = new Array(NUM_BINS).fill(0);
 
-          for (const c of visible) {
-            // Distribute candle volume uniformly across bins its low–high range touches
+          for (const c of candles) {
             const lowBin  = Math.max(0, Math.floor((c.l - pMin) / binSize));
             const highBin = Math.min(NUM_BINS - 1, Math.floor((c.h - pMin) / binSize));
             if (highBin < 0 || lowBin >= NUM_BINS) continue;
@@ -783,7 +910,6 @@ const lastCandleJson = JSON.stringify(lastCandle);
           for (let i = 0; i < NUM_BINS; i++) if (bins[i] > maxBin) maxBin = bins[i];
           if (maxBin === 0) return;
 
-          // Find POC (Point of Control = highest volume bin)
           let pocIdx = 0;
           for (let i = 0; i < NUM_BINS; i++) if (bins[i] === maxBin) { pocIdx = i; break; }
 
@@ -795,13 +921,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           for (let i = 0; i < NUM_BINS; i++) {
             if (bins[i] === 0) continue;
             const w = (bins[i] / maxBin) * maxBarWidth;
-            // bin 0 = lowest price = bottom of chart
             const y = H - (i + 1) * slotH + (slotH - barH) / 2;
             ctx.fillStyle = i === pocIdx ? "rgba(255, 193, 7, 0.55)" : "rgba(88, 166, 255, 0.32)";
             ctx.fillRect(W - w, y, w, barH);
           }
 
-          // POC line label
           const pocY = H - (pocIdx + 0.5) * slotH;
           ctx.strokeStyle = "rgba(255, 193, 7, 0.7)";
           ctx.lineWidth = 1;
@@ -814,11 +938,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
           ctx.font = "10px ui-monospace, monospace";
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";
-          ctx.fillText("POC", 6, pocY - 8);
+          ctx.fillText(`POC · ${label}`, 6, pocY - 8);
         }
 
         setVolumeProfile(on) {
           this.showVolumeProfile = !!on;
+          this.vpMode = on ? "vpvr" : "off";
           this._overlayDirty = true;
         }
 
@@ -946,6 +1071,149 @@ const lastCandleJson = JSON.stringify(lastCandle);
           ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
         }
 
+        _drawNews() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || !candles.length || !this.newsEvents?.length) return;
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
+          const colors = { info: "rgba(88,166,255,0.6)", warn: "rgba(227,179,65,0.7)", crit: "rgba(248,81,73,0.7)" };
+
+          ctx.font = "9px ui-monospace, monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          for (const ev of this.newsEvents) {
+            if (ev.time < tStart || ev.time > tEnd) continue;
+            const x = t2x(ev.time);
+            const color = colors[ev.s] || colors.info;
+            // Dashed vertical line
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, 20);
+            ctx.lineTo(x, H - 8);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Marker bubble at top
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, 14, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#fff";
+            ctx.fillText("N", x, 11);
+          }
+        }
+
+        _drawDivergence() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || candles.length < 30) return;
+          const dpr = window.devicePixelRatio || 1;
+          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const ctx = this.overlayCanvas.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const tStart = vp.time.start, tEnd = vp.time.end;
+          const pMin = vp.price.min, pMax = vp.price.max;
+          const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
+          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+
+          // Compute RSI + pivots once
+          if (!this._cachedDivergence || this._cachedDivergence.len !== candles.length) {
+            const rsi = computeRSI(candles, 14);
+            const pivots = findPivots(candles, 3, 3);
+            const divs = [];
+            // Bearish divergence: consecutive price-highs make HH but RSI makes LH
+            for (let k = 1; k < pivots.highs.length; k++) {
+              const a = pivots.highs[k - 1], b = pivots.highs[k];
+              if (rsi[a] == null || rsi[b] == null) continue;
+              if (b - a < 4 || b - a > 60) continue;
+              if (candles[b].h > candles[a].h && rsi[b] < rsi[a] - 2) {
+                divs.push({ kind: "bear", a, b });
+              }
+            }
+            // Bullish divergence: consecutive price-lows make LL but RSI makes HL
+            for (let k = 1; k < pivots.lows.length; k++) {
+              const a = pivots.lows[k - 1], b = pivots.lows[k];
+              if (rsi[a] == null || rsi[b] == null) continue;
+              if (b - a < 4 || b - a > 60) continue;
+              if (candles[b].l < candles[a].l && rsi[b] > rsi[a] + 2) {
+                divs.push({ kind: "bull", a, b });
+              }
+            }
+            this._cachedDivergence = { len: candles.length, divs };
+          }
+
+          for (const d of this._cachedDivergence.divs) {
+            const ca = candles[d.a], cb = candles[d.b];
+            if (ca.time < tStart || cb.time > tEnd) continue;
+            const xa = t2x(ca.time), xb = t2x(cb.time);
+            const ya = d.kind === "bear" ? p2y(ca.h) : p2y(ca.l);
+            const yb = d.kind === "bear" ? p2y(cb.h) : p2y(cb.l);
+            const color = d.kind === "bear" ? "rgba(248,81,73,0.9)" : "rgba(63,185,80,0.9)";
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(xa, ya);
+            ctx.lineTo(xb, yb);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dots at ends
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(xa, ya, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(xb, yb, 3, 0, Math.PI * 2); ctx.fill();
+
+            // Label
+            const label = d.kind === "bear" ? "Bear Div" : "Bull Div";
+            const ly = d.kind === "bear" ? Math.min(ya, yb) - 8 : Math.max(ya, yb) + 14;
+            ctx.font = "bold 10px ui-monospace, monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = color;
+            ctx.fillText(label, (xa + xb) / 2, ly);
+          }
+        }
+
+        _drawVolumeProfileSession() {
+          const vp = this.getViewportInfo();
+          const candles = this.getCachedCandles();
+          if (!vp || candles.length === 0) return;
+          const tEnd = vp.time.end;
+          // Session = last 24h up to viewport end
+          const sessionStart = tEnd - 86400;
+          const sessionCandles = candles.filter(c => c.time >= sessionStart && c.time <= tEnd);
+          if (sessionCandles.length === 0) return;
+          this._drawVPCore(sessionCandles, "session");
+        }
+
+        setNews(on, events) {
+          this.showNews = !!on;
+          if (events) this.newsEvents = events;
+          this._overlayDirty = true;
+        }
+
+        setDivergence(on) {
+          this.showDivergence = !!on;
+          this._cachedDivergence = null;
+          this._overlayDirty = true;
+        }
+
+        setVPMode(mode) {
+          // mode: 'off' | 'vpvr' | 'vpsv'
+          this.vpMode = mode;
+          this.showVolumeProfile = (mode !== "off");
+          this._overlayDirty = true;
+        }
+
         setCandles(candles)  {
           if (!this.chart) return;
           this.chart.setCandles(JSON.stringify(candles));
@@ -989,7 +1257,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
           logScale:      false,
           axisLocked:    false,
           showVolumeProfile: false,
+          vpMode:        "off",
           showStrategy:  false,
+          showNews:      false,
+          showDivergence: false,
           darkMode:      true,
 
           // Playback mode: off | simulate | replay
@@ -1014,6 +1285,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           layoutsOpen:   false,
           savedLayouts:  [],
           layoutNameInput: "",
+
+          // Symbol search / watchlist (#31, #32)
+          symbolsOpen:    false,
+          symbolQuery:    "",
+          selectedSymbol: "BTC / USD",
 
           ohlcv:         { open:null, high:null, low:null, close:null, volume:null, dir:"" },
           lastPrice:     null,
@@ -1055,6 +1331,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.key === "a" || e.key === "A") this.toggleAxisLock();
               if (e.key === "v" || e.key === "V") this.toggleVolumeProfile();
               if (e.key === "s" || e.key === "S") this.toggleStrategy();
+              if (e.key === "d" || e.key === "D") this.toggleDivergence();
+              if (e.key === "n" || e.key === "N") this.toggleNews();
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
           },
@@ -1080,8 +1358,13 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setLogScale(this.logScale);
             this.chart.setTheme(this.darkMode);
             this.chart.setPriceLocked(this.axisLocked);
-            this.chart.setVolumeProfile(this.showVolumeProfile);
+            this.chart.setVPMode(this.vpMode);
             this.chart.setStrategy(this.showStrategy);
+            this.chart.setDivergence(this.showDivergence);
+            // Rebuild news cache for this timeframe
+            this._newsCache = makeNewsEvents(this._rawCandles(tf));
+            this._newsCacheTf = tf;
+            this.chart.setNews(this.showNews, this._newsCache);
             const wasmStyle = (this.chartType === "ha" || this.chartType === "renko") ? "candlestick" : this.chartType;
             this.chart.setCandleStyle(wasmStyle);
             this._loadCandles(tf);
@@ -1128,13 +1411,33 @@ const lastCandleJson = JSON.stringify(lastCandle);
           },
 
           toggleVolumeProfile() {
-            this.showVolumeProfile = !this.showVolumeProfile;
-            this.chart?.setVolumeProfile(this.showVolumeProfile);
+            // Legacy single-toggle; map to VPVR
+            this.setVPMode(this.vpMode === "off" ? "vpvr" : "off");
+          },
+
+          setVPMode(mode) {
+            this.vpMode = mode;
+            this.showVolumeProfile = mode !== "off";
+            this.chart?.setVPMode(mode);
           },
 
           toggleStrategy() {
             this.showStrategy = !this.showStrategy;
             this.chart?.setStrategy(this.showStrategy);
+          },
+
+          toggleNews() {
+            this.showNews = !this.showNews;
+            if (this.showNews && (!this._newsCache || this._newsCacheTf !== this.activeTf)) {
+              this._newsCache = makeNewsEvents(this.chart?.getCachedCandles() || []);
+              this._newsCacheTf = this.activeTf;
+            }
+            this.chart?.setNews(this.showNews, this._newsCache);
+          },
+
+          toggleDivergence() {
+            this.showDivergence = !this.showDivergence;
+            this.chart?.setDivergence(this.showDivergence);
           },
 
           toggleTheme() {
@@ -1406,6 +1709,20 @@ const lastCandleJson = JSON.stringify(lastCandle);
           deleteLayout(idx) {
             this.savedLayouts.splice(idx, 1);
             this._writeLayouts();
+          },
+
+          // ── Symbol search & watchlist ─────────────────────────
+          filteredSymbols() {
+            const q = (this.symbolQuery || "").trim().toLowerCase();
+            if (!q) return MOCK_SYMBOLS;
+            return MOCK_SYMBOLS.filter(s =>
+              s.sym.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+            );
+          },
+
+          selectSymbol(s) {
+            this.selectedSymbol = s.sym;
+            this.symbolsOpen = false;
           },
 
           _updateOhlcv(info) {
