@@ -1,0 +1,482 @@
+---
+/**
+ * Multi-Chart-Grid Layout (#35)
+ *
+ * Supports 1×1, 1×2, 2×1, 2×2 layouts.
+ * Each cell is an independent chart with its own symbol + timeframe.
+ * Optional crosshair synchronisation across all cells.
+ */
+---
+
+<!-- Grid Picker Dropdown -->
+<div id="chart-grid-picker" class="chart-grid-picker hidden">
+  <div class="cgp-header">Grid Layout</div>
+  <div class="cgp-options">
+    <button class="cgp-option active" data-layout="1x1" title="Single chart">
+      <div class="cgp-preview cgp-1x1"><div></div></div>
+      <span>1×1</span>
+    </button>
+    <button class="cgp-option" data-layout="1x2" title="Side by side">
+      <div class="cgp-preview cgp-1x2"><div></div><div></div></div>
+      <span>1×2</span>
+    </button>
+    <button class="cgp-option" data-layout="2x1" title="Stacked">
+      <div class="cgp-preview cgp-2x1"><div></div><div></div></div>
+      <span>2×1</span>
+    </button>
+    <button class="cgp-option" data-layout="2x2" title="Four charts">
+      <div class="cgp-preview cgp-2x2"><div></div><div></div><div></div><div></div></div>
+      <span>2×2</span>
+    </button>
+  </div>
+  <label class="cgp-sync-label">
+    <input type="checkbox" id="cgp-crosshair-sync" checked />
+    <span>Sync crosshair</span>
+  </label>
+</div>
+
+<!-- Grid Container (wraps chart cells) -->
+<div id="multi-chart-grid" class="multi-chart-grid layout-1x1">
+  <!-- Cells inserted by JS -->
+</div>
+
+<style>
+  /* -------------------------------------------------------------------------
+   * Grid picker popup
+   * ---------------------------------------------------------------------- */
+  .chart-grid-picker {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: rgba(17, 24, 39, 0.98);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 10px;
+    z-index: 1500;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    min-width: 200px;
+  }
+  .chart-grid-picker.hidden { display: none; }
+
+  .cgp-header {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .cgp-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .cgp-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: rgba(255,255,255,0.5);
+    font-size: 10px;
+    font-weight: 500;
+    min-width: 56px;
+  }
+  .cgp-option:hover {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.4);
+    color: #fff;
+  }
+  .cgp-option.active {
+    background: rgba(59,130,246,0.2);
+    border-color: #3b82f6;
+    color: #60a5fa;
+  }
+
+  /* Grid cell previews */
+  .cgp-preview {
+    width: 32px;
+    height: 22px;
+    display: grid;
+    gap: 1px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .cgp-preview div { background: rgba(255,255,255,0.25); border-radius: 1px; }
+
+  .cgp-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .cgp-1x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+  .cgp-2x1 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .cgp-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+  .cgp-sync-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+  }
+  .cgp-sync-label input { accent-color: #3b82f6; }
+
+  /* -------------------------------------------------------------------------
+   * Grid container
+   * ---------------------------------------------------------------------- */
+  .multi-chart-grid {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    gap: 0;
+    position: absolute;
+    inset: 0;
+  }
+
+  /* Layout classes (applied to .multi-chart-grid) */
+  .multi-chart-grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .multi-chart-grid.layout-1x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+  .multi-chart-grid.layout-2x1 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .multi-chart-grid.layout-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+  /* In 1×1 the grid is invisible — the existing main chart takes over */
+  .multi-chart-grid.layout-1x1 { display: none; }
+
+  /* -------------------------------------------------------------------------
+   * Individual chart cell
+   * ---------------------------------------------------------------------- */
+  .chart-cell {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .chart-cell:first-child { border-left: none; border-top: none; }
+
+  .chart-cell-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 6px;
+    z-index: 10;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .chart-cell-header select {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    color: #e5e7eb;
+    font-size: 10px;
+    padding: 2px 4px;
+    outline: none;
+  }
+
+  .chart-cell-canvas-wrapper {
+    position: absolute;
+    inset: 28px 0 0 0;
+  }
+
+  .chart-cell-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Resize handle between cells */
+  .chart-cell-resize-h {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -3px;
+    width: 6px;
+    cursor: ew-resize;
+    z-index: 20;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .chart-cell-resize-h:hover,
+  .chart-cell-resize-h.dragging { background: rgba(59,130,246,0.5); }
+
+  .chart-cell-resize-v {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -3px;
+    height: 6px;
+    cursor: ns-resize;
+    z-index: 20;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .chart-cell-resize-v:hover,
+  .chart-cell-resize-v.dragging { background: rgba(59,130,246,0.5); }
+</style>
+
+<script is:inline>
+(function () {
+  const SYMBOLS  = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+  const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
+
+  const LAYOUTS = {
+    '1x1': { cols: 1, rows: 1 },
+    '1x2': { cols: 2, rows: 1 },
+    '2x1': { cols: 1, rows: 2 },
+    '2x2': { cols: 2, rows: 2 },
+  };
+
+  let currentLayout = '1x1';
+  let syncCrosshair = true;
+  // Store column/row sizes as fractions (e.g., [50,50] means equal)
+  let colSizes = [100];
+  let rowSizes = [100];
+  // Cell configs: { symbol, timeframe, chartInstance }
+  let cells = [];
+
+  const grid = document.getElementById('multi-chart-grid');
+  const picker = document.getElementById('chart-grid-picker');
+  const syncToggle = document.getElementById('cgp-crosshair-sync');
+
+  function buildGridCSS() {
+    const { cols, rows } = LAYOUTS[currentLayout];
+    const colFr = colSizes.slice(0, cols).map(v => `${v}fr`).join(' ');
+    const rowFr = rowSizes.slice(0, rows).map(v => `${v}fr`).join(' ');
+    grid.style.gridTemplateColumns = colFr;
+    grid.style.gridTemplateRows = rowFr;
+  }
+
+  function createCellHTML(index, symbol, timeframe) {
+    const symbolOptions = SYMBOLS.map(s =>
+      `<option value="${s}" ${s === symbol ? 'selected' : ''}>${s}</option>`
+    ).join('');
+    const tfOptions = TIMEFRAMES.map(tf =>
+      `<option value="${tf}" ${tf === timeframe ? 'selected' : ''}>${tf}</option>`
+    ).join('');
+
+    return `
+      <div class="chart-cell" data-cell="${index}">
+        <div class="chart-cell-header">
+          <select class="cell-symbol-select" data-cell="${index}">${symbolOptions}</select>
+          <select class="cell-tf-select" data-cell="${index}">${tfOptions}</select>
+        </div>
+        <div class="chart-cell-canvas-wrapper">
+          <canvas class="chart-cell-canvas" id="chart-cell-canvas-${index}"></canvas>
+        </div>
+      </div>
+    `;
+  }
+
+  function applyLayout(layout) {
+    if (!LAYOUTS[layout]) return;
+    currentLayout = layout;
+    const { cols, rows } = LAYOUTS[layout];
+    const cellCount = cols * rows;
+
+    // Reset size arrays
+    colSizes = Array(cols).fill(100 / cols);
+    rowSizes = Array(rows).fill(100 / rows);
+
+    // Update grid class
+    grid.className = `multi-chart-grid layout-${layout}`;
+
+    if (layout === '1x1') {
+      // Hide grid; the existing main-chart handles this.
+      grid.style.display = 'none';
+      return;
+    }
+    grid.style.display = 'grid';
+    buildGridCSS();
+
+    // Default cell configs
+    while (cells.length < cellCount) {
+      const i = cells.length;
+      cells.push({
+        symbol: SYMBOLS[i % SYMBOLS.length] || 'BTCUSDT',
+        timeframe: i === 0 ? '1h' : i === 1 ? '4h' : '15m',
+        chartInstance: null,
+      });
+    }
+    cells.length = cellCount;
+
+    // Render cells
+    grid.innerHTML = cells.map((cell, i) =>
+      createCellHTML(i, cell.symbol, cell.timeframe)
+    ).join('');
+
+    // Add resize handles between columns
+    if (cols > 1) {
+      grid.querySelectorAll('.chart-cell').forEach((el, i) => {
+        const col = i % cols;
+        if (col < cols - 1) {
+          const handle = document.createElement('div');
+          handle.className = 'chart-cell-resize-h';
+          handle.dataset.resizeH = String(col);
+          el.appendChild(handle);
+          attachHorizontalResize(handle, col);
+        }
+      });
+    }
+    // Add resize handles between rows
+    if (rows > 1) {
+      grid.querySelectorAll('.chart-cell').forEach((el, i) => {
+        const row = Math.floor(i / cols);
+        if (row < rows - 1) {
+          const handle = document.createElement('div');
+          handle.className = 'chart-cell-resize-v';
+          handle.dataset.resizeV = String(row);
+          el.appendChild(handle);
+          attachVerticalResize(handle, row);
+        }
+      });
+    }
+
+    // Bind selects
+    grid.querySelectorAll('.cell-symbol-select').forEach(sel => {
+      sel.addEventListener('change', e => {
+        const idx = Number(e.target.dataset.cell);
+        cells[idx].symbol = e.target.value;
+        window.dispatchEvent(new CustomEvent('chart-cell-changed', {
+          detail: { cellIndex: idx, symbol: cells[idx].symbol, timeframe: cells[idx].timeframe }
+        }));
+      });
+    });
+    grid.querySelectorAll('.cell-tf-select').forEach(sel => {
+      sel.addEventListener('change', e => {
+        const idx = Number(e.target.dataset.cell);
+        cells[idx].timeframe = e.target.value;
+        window.dispatchEvent(new CustomEvent('chart-cell-changed', {
+          detail: { cellIndex: idx, symbol: cells[idx].symbol, timeframe: cells[idx].timeframe }
+        }));
+      });
+    });
+
+    // Notify that grid changed so chart initialisation can hook in.
+    window.dispatchEvent(new CustomEvent('chart-grid-changed', {
+      detail: { layout, cellCount }
+    }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Resize handles
+  // -------------------------------------------------------------------------
+  function attachHorizontalResize(handle, colIndex) {
+    let startX, startSizes;
+    handle.addEventListener('pointerdown', e => {
+      handle.classList.add('dragging');
+      startX = e.clientX;
+      startSizes = [...colSizes];
+      e.preventDefault();
+
+      const onMove = ev => {
+        const gridRect = grid.getBoundingClientRect();
+        const delta = ((ev.clientX - startX) / gridRect.width) * 100;
+        const newLeft  = Math.max(10, startSizes[colIndex]     + delta);
+        const newRight = Math.max(10, startSizes[colIndex + 1] - delta);
+        colSizes[colIndex]     = newLeft;
+        colSizes[colIndex + 1] = newRight;
+        buildGridCSS();
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  function attachVerticalResize(handle, rowIndex) {
+    let startY, startSizes;
+    handle.addEventListener('pointerdown', e => {
+      handle.classList.add('dragging');
+      startY = e.clientY;
+      startSizes = [...rowSizes];
+      e.preventDefault();
+
+      const onMove = ev => {
+        const gridRect = grid.getBoundingClientRect();
+        const delta = ((ev.clientY - startY) / gridRect.height) * 100;
+        const newTop    = Math.max(10, startSizes[rowIndex]     + delta);
+        const newBottom = Math.max(10, startSizes[rowIndex + 1] - delta);
+        rowSizes[rowIndex]     = newTop;
+        rowSizes[rowIndex + 1] = newBottom;
+        buildGridCSS();
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Crosshair synchronisation
+  // -------------------------------------------------------------------------
+  // The primary chart (cell 0) broadcasts its crosshair time/price.
+  // Secondary cells position a marker at the matching x coordinate.
+
+  window.addEventListener('chart-cell-crosshair', e => {
+    if (!syncCrosshair) return;
+    const { sourceCell, time, price } = e.detail;
+    grid.querySelectorAll('.chart-cell').forEach((el, i) => {
+      if (i === sourceCell) return;
+      // Let each cell's chart instance know the crosshair position.
+      window.dispatchEvent(new CustomEvent('chart-cell-set-crosshair', {
+        detail: { cellIndex: i, time, price }
+      }));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Grid picker UI
+  // -------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!grid) return;
+
+    document.querySelectorAll('.cgp-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.cgp-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyLayout(btn.dataset.layout);
+        picker?.classList.add('hidden');
+      });
+    });
+
+    syncToggle?.addEventListener('change', e => {
+      syncCrosshair = e.target.checked;
+    });
+
+    // Open/close picker via event (wired from toolbar button)
+    window.addEventListener('toggle-chart-grid-picker', e => {
+      const anchor = e.detail?.anchor;
+      if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        picker.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+        picker.style.left = rect.left + 'px';
+        picker.style.position = 'fixed';
+      }
+      picker?.classList.toggle('hidden');
+    });
+
+    // Initial state — single chart
+    applyLayout('1x1');
+  });
+})();
+</script>

@@ -1,0 +1,192 @@
+---
+// FootprintOverlay.astro
+// Toolbar button + logic to enable footprint (delta) candle mode.
+// When active, subscribes to "ticks:{source}:{symbol}" Phoenix channel,
+// feeds incoming "footprint_candle" events to WasmChart.addFootprintCandle(),
+// and calls WasmChart.setFootprintEnabled(true).
+---
+
+<div id="footprint-overlay">
+  <button
+    id="footprint-toggle-btn"
+    class="toolbar-btn"
+    title="Toggle Footprint / Delta candles"
+    aria-pressed="false"
+  >
+    Δ Delta
+  </button>
+
+  <!-- Delta legend shown below crosshair price label when footprint is active -->
+  <div id="footprint-legend" class="footprint-legend" style="display:none">
+    <span class="fp-label">Δ</span>
+    <span id="fp-delta-value">—</span>
+    <span class="fp-sep">|</span>
+    <span class="fp-label">Buy</span>
+    <span id="fp-buy-vol">—</span>
+    <span class="fp-sep">|</span>
+    <span class="fp-label">Sell</span>
+    <span id="fp-sell-vol">—</span>
+  </div>
+</div>
+
+<style>
+  .toolbar-btn {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 10px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar-btn:hover {
+    background: rgba(255,255,255,0.13);
+  }
+  .toolbar-btn[aria-pressed="true"] {
+    background: rgba(0, 200, 120, 0.2);
+    border-color: rgba(0, 200, 120, 0.6);
+    color: #00c878;
+  }
+
+  .footprint-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    background: rgba(10, 14, 18, 0.85);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    padding: 3px 8px;
+    color: #ccc;
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 50;
+  }
+  .fp-label { color: #888; }
+  .fp-sep   { color: #444; }
+</style>
+
+<script>
+(() => {
+  const btn = document.getElementById('footprint-toggle-btn');
+  const legend = document.getElementById('footprint-legend');
+  const deltaEl = document.getElementById('fp-delta-value');
+  const buyEl   = document.getElementById('fp-buy-vol');
+  const sellEl  = document.getElementById('fp-sell-vol');
+
+  let enabled = false;
+  let socket = null;
+  let channel = null;
+
+  // Retrieve chart instance from global store set by ChartContainer
+  function getChart() {
+    return window.__loomChart || null;
+  }
+
+  function formatVol(v) {
+    if (v == null) return '—';
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+    return v.toFixed(2);
+  }
+
+  function updateLegend(candle) {
+    if (!candle) return;
+    const delta = candle.delta ?? 0;
+    const sign  = delta >= 0 ? '+' : '';
+    deltaEl.textContent = `${sign}${formatVol(delta)}`;
+    deltaEl.style.color = delta >= 0 ? '#00c878' : '#f04444';
+
+    // Sum buy / sell across all levels
+    const levels = candle.levels ?? [];
+    const totalBuy  = levels.reduce((s, l) => s + (l.buy_volume  ?? 0), 0);
+    const totalSell = levels.reduce((s, l) => s + (l.sell_volume ?? 0), 0);
+    buyEl.textContent  = formatVol(totalBuy);
+    sellEl.textContent = formatVol(totalSell);
+  }
+
+  function connectTicksChannel() {
+    // Resolve current symbol from the chart or a global config store
+    const source = window.__loomSource || 'capitalcom';
+    const symbol = window.__loomSymbol || 'BTCUSDT';
+    const topic  = `ticks:${source}:${symbol}`;
+
+    // Reuse the Phoenix socket created by ChartContainer / ChartAxis
+    const phxSocket = window.__loomSocket;
+    if (!phxSocket) {
+      console.warn('[FootprintOverlay] No Phoenix socket found (window.__loomSocket)');
+      return;
+    }
+
+    channel = phxSocket.channel(topic, { timeframe: 60, tick_size: 1.0 });
+
+    channel.on('footprint_candle', (candle) => {
+      const chart = getChart();
+      if (!chart) return;
+      try {
+        chart.addFootprintCandle(JSON.stringify(candle));
+        updateLegend(candle);
+      } catch (e) {
+        console.error('[FootprintOverlay] addFootprintCandle error', e);
+      }
+    });
+
+    channel.join()
+      .receive('ok', () => console.log('[FootprintOverlay] joined', topic))
+      .receive('error', (r) => console.error('[FootprintOverlay] join error', r));
+  }
+
+  function disconnectTicksChannel() {
+    if (channel) {
+      channel.leave();
+      channel = null;
+    }
+  }
+
+  btn.addEventListener('click', () => {
+    enabled = !enabled;
+    btn.setAttribute('aria-pressed', String(enabled));
+
+    const chart = getChart();
+    if (chart) {
+      chart.setFootprintEnabled(enabled);
+    }
+
+    if (enabled) {
+      legend.style.display = 'flex';
+      connectTicksChannel();
+    } else {
+      legend.style.display = 'none';
+      disconnectTicksChannel();
+    }
+  });
+
+  // Sync legend with crosshair: when crosshair moves, find nearest footprint candle
+  window.addEventListener('chart-crosshair-moved', (e) => {
+    if (!enabled) return;
+    const time = e.detail?.time;
+    if (time == null) return;
+
+    const fps = window.__loomFootprintCandles || [];
+    const candle = fps.find(c => c.timestamp === time)
+                || fps.reduce((best, c) => {
+                     const d = Math.abs(c.timestamp - time);
+                     const bd = best ? Math.abs(best.timestamp - time) : Infinity;
+                     return d < bd ? c : best;
+                   }, null);
+    if (candle) updateLegend(candle);
+  });
+
+  // Allow other components to enable footprint programmatically
+  window.addEventListener('footprint-enable', () => {
+    if (!enabled) btn.click();
+  });
+  window.addEventListener('footprint-disable', () => {
+    if (enabled) btn.click();
+  });
+})();
+</script>

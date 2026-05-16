@@ -1,5 +1,6 @@
 use super::{ChartTool, ToolNode, ToolType};
 use crate::core::Viewport;
+#[cfg(feature = "wasm")]
 use crate::rendering::{Canvas2DRenderer, Renderer, TextAlign, TextBaseline};
 use crate::Color;
 use serde::{Deserialize, Serialize};
@@ -69,6 +70,7 @@ impl ChartTool for HorizontalLine {
         &self.nodes
     }
 
+    #[cfg(feature = "wasm")]
     fn render(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport) {
         if let Some(price) = self.price() {
             let y = viewport.price_to_y(price);
@@ -129,6 +131,7 @@ impl ChartTool for HorizontalLine {
     }
 }
 
+#[cfg(feature = "wasm")]
 impl HorizontalLine {
     fn draw_dashed_horizontal(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport, y: f64) {
         let width = viewport.dimensions.width as f64;

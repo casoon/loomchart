@@ -1,0 +1,603 @@
+---
+/**
+ * Plugin Management UI (#54)
+ *
+ * Lists all registered plugins (built-in + external WASM).
+ * Supports enable/disable toggles, per-plugin configuration, and shows
+ * type badges. State is persisted in localStorage.
+ */
+---
+
+<div id="plugin-manager" class="plugin-manager hidden">
+  <div class="pm-header">
+    <h3>Plugins</h3>
+    <button id="close-plugin-manager" class="close-btn" title="Close">×</button>
+  </div>
+
+  <div class="pm-tabs">
+    <button class="pm-tab active" data-tab="all">All</button>
+    <button class="pm-tab" data-tab="indicator">Indicators</button>
+    <button class="pm-tab" data-tab="strategy">Strategies</button>
+    <button class="pm-tab" data-tab="renderer">Renderers</button>
+  </div>
+
+  <div class="pm-search">
+    <input
+      type="text"
+      id="plugin-search"
+      placeholder="Search plugins…"
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+
+  <div id="plugin-list" class="pm-list">
+    <!-- Populated by JS -->
+  </div>
+</div>
+
+<!-- Configure modal -->
+<div id="plugin-configure-modal" class="pm-modal hidden">
+  <div class="pm-modal-content">
+    <div class="pm-modal-header">
+      <span id="pm-modal-title">Configure Plugin</span>
+      <button id="close-plugin-configure" class="close-btn">×</button>
+    </div>
+    <div id="pm-modal-inputs" class="pm-modal-inputs">
+      <!-- Auto-generated input controls -->
+    </div>
+    <div class="pm-modal-footer">
+      <button id="pm-apply-config" class="pm-btn-primary">Apply</button>
+      <button id="pm-reset-config" class="pm-btn-secondary">Reset</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .plugin-manager {
+    position: fixed;
+    right: 20px;
+    top: 120px;
+    width: 340px;
+    background: rgba(17, 24, 39, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    z-index: 2000;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .plugin-manager.hidden { display: none; }
+
+  .pm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .pm-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .close-btn:hover { color: #fff; }
+
+  .pm-tabs {
+    display: flex;
+    padding: 8px 12px 0;
+    gap: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .pm-tab {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 4px 4px 0 0;
+    transition: color 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .pm-tab:hover { color: rgba(255,255,255,0.7); }
+  .pm-tab.active {
+    color: #fff;
+    border-bottom: 2px solid #3b82f6;
+  }
+
+  .pm-search {
+    padding: 10px 12px 8px;
+  }
+  .pm-search input {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 5px;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+  .pm-search input:focus { border-color: rgba(59,130,246,0.6); }
+  .pm-search input::placeholder { color: rgba(255,255,255,0.3); }
+
+  .pm-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0 8px;
+  }
+
+  .pm-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    gap: 10px;
+    transition: background 0.1s;
+    cursor: default;
+  }
+  .pm-item:hover { background: rgba(255,255,255,0.04); }
+
+  .pm-type-badge {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .pm-type-badge.indicator { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .pm-type-badge.strategy  { background: rgba(16,185,129,0.2); color: #34d399; }
+  .pm-type-badge.renderer  { background: rgba(245,158,11,0.2); color: #fbbf24; }
+  .pm-type-badge.builtin   { background: rgba(107,114,128,0.15); color: #9ca3af; }
+
+  .pm-item-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .pm-item-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #e5e7eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pm-item-meta {
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    margin-top: 1px;
+  }
+
+  .pm-toggle {
+    width: 30px;
+    height: 16px;
+    background: rgba(255,255,255,0.15);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .pm-toggle::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+  }
+  .pm-toggle.enabled {
+    background: #3b82f6;
+  }
+  .pm-toggle.enabled::after {
+    transform: translateX(14px);
+  }
+
+  .pm-configure-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    font-size: 10px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .pm-configure-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+
+  .pm-empty {
+    text-align: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    padding: 24px 16px;
+  }
+
+  /* Modal */
+  .pm-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+  }
+  .pm-modal.hidden { display: none; }
+
+  .pm-modal-content {
+    background: rgba(17,24,39,0.99);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    width: 320px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+  }
+
+  .pm-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .pm-modal-inputs {
+    padding: 12px 16px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pm-input-group label {
+    display: block;
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .pm-input-group input[type="number"],
+  .pm-input-group input[type="text"],
+  .pm-input-group select {
+    width: 100%;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 5px;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+  .pm-input-group input:focus,
+  .pm-input-group select:focus { border-color: rgba(59,130,246,0.6); }
+  .pm-input-group input[type="checkbox"] { width: auto; }
+
+  .pm-modal-footer {
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .pm-btn-primary {
+    background: #3b82f6;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .pm-btn-primary:hover { background: #2563eb; }
+
+  .pm-btn-secondary {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.6);
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pm-btn-secondary:hover {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  // -------------------------------------------------------------------------
+  // Demo plugin registry (replaced by real WASM registry when integrated)
+  // -------------------------------------------------------------------------
+  const DEMO_PLUGINS = [
+    {
+      id: 'rsi',        name: 'RSI',            type: 'indicator', builtin: true,  version: 'built-in',
+      inputs: [{ id: 'length', title: 'Length', kind: 'int', min: 2, max: 100, default: 14 }]
+    },
+    {
+      id: 'ema',        name: 'EMA',            type: 'indicator', builtin: true,  version: 'built-in',
+      inputs: [{ id: 'length', title: 'Length', kind: 'int', min: 1, max: 500, default: 20 }]
+    },
+    {
+      id: 'macd',       name: 'MACD',           type: 'indicator', builtin: true,  version: 'built-in',
+      inputs: [
+        { id: 'fast',   title: 'Fast Period', kind: 'int', default: 12 },
+        { id: 'slow',   title: 'Slow Period', kind: 'int', default: 26 },
+        { id: 'signal', title: 'Signal',      kind: 'int', default: 9  },
+      ]
+    },
+    {
+      id: 'supertrend', name: 'SuperTrend',     type: 'indicator', builtin: false, version: '0.1.0',
+      inputs: [
+        { id: 'period',     title: 'ATR Period',   kind: 'int',   min: 1, max: 200, default: 10  },
+        { id: 'multiplier', title: 'Multiplier',   kind: 'float', min: 0.1, max: 10, default: 3.0 },
+      ]
+    },
+    {
+      id: 'trend_follow', name: 'Trend Follow',  type: 'strategy', builtin: false, version: '0.1.0',
+      inputs: [{ id: 'threshold', title: 'Threshold %', kind: 'float', default: 1.5 }]
+    },
+    {
+      id: 'sr_overlay',   name: 'S/R Levels',    type: 'renderer', builtin: false, version: '0.1.0',
+      inputs: [{ id: 'lookback', title: 'Lookback',  kind: 'int', default: 50 }]
+    },
+  ];
+
+  const STORAGE_KEY = 'loomchart_plugin_state';
+
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  }
+  function saveState(state) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  let pluginState = loadState();
+  let activeTab = 'all';
+  let searchQuery = '';
+  let configuringPlugin = null;
+  let pendingInputs = {};
+
+  function isEnabled(plugin) {
+    if (plugin.builtin) return pluginState[plugin.id]?.enabled ?? true;
+    return pluginState[plugin.id]?.enabled ?? false;
+  }
+
+  function getInputValues(plugin) {
+    const saved = pluginState[plugin.id]?.inputs || {};
+    const result = {};
+    for (const input of plugin.inputs) {
+      result[input.id] = saved[input.id] ?? input.default;
+    }
+    return result;
+  }
+
+  function renderPluginList() {
+    const list = document.getElementById('plugin-list');
+    if (!list) return;
+
+    const filtered = DEMO_PLUGINS.filter(p => {
+      const matchTab = activeTab === 'all' || p.type === activeTab;
+      const matchSearch = !searchQuery ||
+        p.name.toLowerCase().includes(searchQuery) ||
+        p.id.toLowerCase().includes(searchQuery);
+      return matchTab && matchSearch;
+    });
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="pm-empty">No plugins found</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(plugin => {
+      const enabled = isEnabled(plugin);
+      const typeLabel = plugin.builtin ? 'builtin' : plugin.type;
+      return `
+        <div class="pm-item">
+          <span class="pm-type-badge ${typeLabel}">${typeLabel}</span>
+          <div class="pm-item-info">
+            <div class="pm-item-name">${plugin.name}</div>
+            <div class="pm-item-meta">v${plugin.version} · ${plugin.id}</div>
+          </div>
+          ${plugin.inputs.length > 0
+            ? `<button class="pm-configure-btn" data-id="${plugin.id}">Config</button>`
+            : ''}
+          <button
+            class="pm-toggle ${enabled ? 'enabled' : ''}"
+            data-id="${plugin.id}"
+            title="${enabled ? 'Disable' : 'Enable'}"
+          ></button>
+        </div>
+      `;
+    }).join('');
+
+    // Bind toggle clicks
+    list.querySelectorAll('.pm-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const plugin = DEMO_PLUGINS.find(p => p.id === id);
+        if (!plugin) return;
+        const current = isEnabled(plugin);
+        if (!pluginState[id]) pluginState[id] = {};
+        pluginState[id].enabled = !current;
+        saveState(pluginState);
+        renderPluginList();
+        window.dispatchEvent(new CustomEvent('plugin-state-changed', { detail: { id, enabled: !current } }));
+      });
+    });
+
+    // Bind configure clicks
+    list.querySelectorAll('.pm-configure-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfigure(id);
+      });
+    });
+  }
+
+  function openConfigure(pluginId) {
+    const plugin = DEMO_PLUGINS.find(p => p.id === pluginId);
+    if (!plugin) return;
+    configuringPlugin = plugin;
+    pendingInputs = { ...getInputValues(plugin) };
+
+    document.getElementById('pm-modal-title').textContent = `Configure: ${plugin.name}`;
+
+    const container = document.getElementById('pm-modal-inputs');
+    container.innerHTML = plugin.inputs.map(input => {
+      const val = pendingInputs[input.id];
+      if (input.kind === 'int' || input.kind === 'float') {
+        return `
+          <div class="pm-input-group">
+            <label>${input.title}</label>
+            <input type="number" data-id="${input.id}"
+              value="${val}"
+              ${input.min !== undefined ? `min="${input.min}"` : ''}
+              ${input.max !== undefined ? `max="${input.max}"` : ''}
+              step="${input.kind === 'float' ? '0.1' : '1'}"
+            />
+          </div>`;
+      }
+      if (input.kind === 'bool') {
+        return `
+          <div class="pm-input-group">
+            <label>
+              <input type="checkbox" data-id="${input.id}" ${val ? 'checked' : ''} />
+              ${input.title}
+            </label>
+          </div>`;
+      }
+      return `
+        <div class="pm-input-group">
+          <label>${input.title}</label>
+          <input type="text" data-id="${input.id}" value="${val}" />
+        </div>`;
+    }).join('');
+
+    document.getElementById('plugin-configure-modal').classList.remove('hidden');
+  }
+
+  function applyConfig() {
+    if (!configuringPlugin) return;
+    const id = configuringPlugin.id;
+    const inputs = document.getElementById('pm-modal-inputs');
+    const newValues = {};
+    inputs.querySelectorAll('[data-id]').forEach(el => {
+      const key = el.dataset.id;
+      if (el.type === 'checkbox') newValues[key] = el.checked;
+      else if (el.type === 'number') newValues[key] = Number(el.value);
+      else newValues[key] = el.value;
+    });
+    if (!pluginState[id]) pluginState[id] = {};
+    pluginState[id].inputs = newValues;
+    saveState(pluginState);
+    window.dispatchEvent(new CustomEvent('plugin-config-changed', { detail: { id, inputs: newValues } }));
+    closeModal();
+  }
+
+  function resetConfig() {
+    if (!configuringPlugin) return;
+    const id = configuringPlugin.id;
+    if (pluginState[id]) delete pluginState[id].inputs;
+    saveState(pluginState);
+    closeModal();
+  }
+
+  function closeModal() {
+    document.getElementById('plugin-configure-modal').classList.add('hidden');
+    configuringPlugin = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    const manager = document.getElementById('plugin-manager');
+    if (!manager) return;
+
+    // Close button
+    document.getElementById('close-plugin-manager')?.addEventListener('click', () => {
+      manager.classList.add('hidden');
+    });
+
+    // Tab switching
+    document.querySelectorAll('.pm-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.pm-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        renderPluginList();
+      });
+    });
+
+    // Search
+    document.getElementById('plugin-search')?.addEventListener('input', e => {
+      searchQuery = e.target.value.toLowerCase().trim();
+      renderPluginList();
+    });
+
+    // Modal actions
+    document.getElementById('close-plugin-configure')?.addEventListener('click', closeModal);
+    document.getElementById('pm-apply-config')?.addEventListener('click', applyConfig);
+    document.getElementById('pm-reset-config')?.addEventListener('click', resetConfig);
+
+    // Open trigger
+    window.addEventListener('show-plugin-manager', () => {
+      manager.classList.remove('hidden');
+      renderPluginList();
+    });
+
+    renderPluginList();
+  });
+})();
+</script>

@@ -1,0 +1,332 @@
+---
+// TopBar.astro — main toolbar
+---
+
+<header id="loom-topbar">
+  <!-- Left group: logo + symbol + exchange + timeframes -->
+  <div class="tb-left">
+    <!-- Logo -->
+    <div class="tb-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M3 3v16a2 2 0 002 2h16" stroke="#4e9cff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M7 14l4-5 4 4 4-6" stroke="#4e9cff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="tb-wordmark">loom</span>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Symbol search button -->
+    <button
+      class="tb-btn tb-symbol-btn"
+      id="topbar-symbol-btn"
+      onclick="window.dispatchEvent(new Event('open-symbol-search'))"
+    >
+      <span id="topbar-symbol-label">BTC/USD</span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+        <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <!-- Exchange select (compact) -->
+    <select id="topbar-source-select" class="tb-select">
+      <option value="binance">Binance</option>
+      <option value="capitalcom">Capital.com</option>
+      <option value="coinbase">Coinbase</option>
+      <option value="kraken">Kraken</option>
+    </select>
+
+    <div class="tb-sep"></div>
+
+    <!-- Timeframe pills -->
+    <div class="tb-timeframes" id="topbar-timeframes">
+      <button class="tb-tf" data-tf="1m">1m</button>
+      <button class="tb-tf" data-tf="5m">5m</button>
+      <button class="tb-tf" data-tf="15m">15m</button>
+      <button class="tb-tf" data-tf="1h">1h</button>
+      <button class="tb-tf" data-tf="4h">4h</button>
+      <button class="tb-tf active" data-tf="1D">1D</button>
+      <button class="tb-tf" data-tf="1W">1W</button>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Chart type dropdown -->
+    <div class="tb-dropdown" id="charttype-dropdown">
+      <button class="tb-btn" id="charttype-btn" onclick="toggleMenu('charttype-menu')">
+        <!-- candlestick icon -->
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="7" width="4" height="10" rx="1"/>
+          <line x1="6" y1="3" x2="6" y2="7"/><line x1="6" y1="17" x2="6" y2="21"/>
+          <rect x="16" y="4" width="4" height="8" rx="1"/>
+          <line x1="18" y1="1" x2="18" y2="4"/><line x1="18" y1="12" x2="18" y2="17"/>
+        </svg>
+        <span id="charttype-label">Candles</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="tb-menu" id="charttype-menu" style="display:none">
+        <button class="tb-menu-item active" data-charttype="candlestick" onclick="setChartType(this)">Candlestick</button>
+        <button class="tb-menu-item" data-charttype="ohlc" onclick="setChartType(this)">OHLC Bars</button>
+        <button class="tb-menu-item" data-charttype="hollow" onclick="setChartType(this)">Hollow Candles</button>
+        <button class="tb-menu-item" data-charttype="line" onclick="setChartType(this)">Line</button>
+        <button class="tb-menu-item" data-charttype="area" onclick="setChartType(this)">Area</button>
+      </div>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Indicators -->
+    <button class="tb-btn" onclick="window.dispatchEvent(new Event('show-indicator-selector'))">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 4v16m8-8H4"/>
+      </svg>
+      Indicators
+    </button>
+
+    <!-- Alerts dropdown -->
+    <div class="tb-dropdown">
+      <button class="tb-btn" onclick="toggleMenu('alerts-menu')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+        </svg>
+        Alerts
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="tb-menu" id="alerts-menu" style="display:none">
+        <button class="tb-menu-item" onclick="tbDispatch('toggle-price-alerts')">Price Alerts</button>
+        <button class="tb-menu-item" onclick="tbDispatch('toggle-indicator-alerts')">Indicator Alerts</button>
+        <button class="tb-menu-item" onclick="tbDispatch('toggle-alert-manager')">Delivery Settings</button>
+      </div>
+    </div>
+
+    <!-- Views dropdown -->
+    <div class="tb-dropdown">
+      <button class="tb-btn" onclick="toggleMenu('views-menu')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        Views
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="tb-menu" id="views-menu" style="display:none">
+        <button class="tb-menu-item" id="view-vpvr" onclick="toggleView('toggle-vpvr', this)">Volume Profile (VPVR)</button>
+        <button class="tb-menu-item" id="view-vpsv" onclick="toggleView('toggle-vpsv', this)">Session Profile (VPSV)</button>
+        <button class="tb-menu-item" id="view-footprint" onclick="toggleView('footprint-enable', this)">Footprint / Delta</button>
+        <button class="tb-menu-item" id="view-compare" onclick="tbDispatch('toggle-symbol-compare')">Compare Symbols</button>
+        <button class="tb-menu-item" id="view-news" onclick="toggleView('toggle-news-overlay', this)">News &amp; Events</button>
+        <button class="tb-menu-item" id="view-entropy" onclick="toggleView('toggle-entropy', this)">Entropy Overlay</button>
+        <button class="tb-menu-item" id="view-regime" onclick="toggleView('toggle-regime', this)">Regime Indicator</button>
+      </div>
+    </div>
+
+    <!-- Layouts dropdown -->
+    <div class="tb-dropdown">
+      <button class="tb-btn" onclick="toggleMenu('layouts-menu')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"/>
+        </svg>
+        Layouts
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="tb-menu" id="layouts-menu" style="display:none">
+        <button class="tb-menu-item" onclick="Alpine.store('layoutManagerOpen', true); closeMenus()">Saved Layouts</button>
+        <button class="tb-menu-item" onclick="Alpine.store('layoutPresetsOpen', true); closeMenus()">Presets</button>
+        <button class="tb-menu-item" onclick="Alpine.store('stateManagerOpen', !Alpine.store('stateManagerOpen')); closeMenus()">Chart States</button>
+        <button class="tb-menu-item" onclick="showPanelManager(); closeMenus()">Panel Manager</button>
+      </div>
+    </div>
+
+    <!-- Grid -->
+    <button class="tb-btn" id="grid-btn" onclick="openGridPicker(event)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      Grid
+    </button>
+  </div>
+
+  <!-- Right group: watchlist, theme, settings, connection -->
+  <div class="tb-right">
+    <!-- Watchlist -->
+    <button class="tb-btn" onclick="window.dispatchEvent(new Event('toggle-watchlist'))" title="Watchlist">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 6h16M4 10h16M4 14h10M4 18h10"/>
+      </svg>
+      Watchlist
+    </button>
+
+    <!-- Theme Toggle -->
+    <button class="tb-btn" id="topbar-theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+      <svg id="theme-icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+        <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+      <svg id="theme-icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+      </svg>
+    </button>
+
+    <!-- Settings dropdown -->
+    <div class="tb-dropdown">
+      <button class="tb-btn" onclick="toggleMenu('settings-menu')" title="Settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+      <div class="tb-menu" id="settings-menu" style="display:none; right:0; left:auto">
+        <button class="tb-menu-item" onclick="tbDispatch('toggle-cache-manager')">Cache Manager</button>
+        <button class="tb-menu-item" onclick="tbDispatch('toggle-plugin-manager')">Plugin Manager</button>
+      </div>
+    </div>
+
+    <!-- Connection status -->
+    <div class="tb-connection" id="topbar-connection">
+      <div class="tb-dot tb-dot--connected" id="topbar-dot"></div>
+      <span id="topbar-conn-label">Live</span>
+    </div>
+  </div>
+</header>
+
+<style>
+#loom-topbar {
+  height: 40px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+  flex-shrink: 0;
+  z-index: 100;
+  position: relative;
+}
+.tb-left  { display: flex; align-items: center; gap: 2px; flex: 1; overflow: hidden; }
+.tb-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: auto; padding-left: 8px; }
+
+.tb-logo { display: flex; align-items: center; gap: 6px; padding: 0 6px; flex-shrink: 0; }
+.tb-wordmark { font-size: 14px; font-weight: 600; color: var(--text); letter-spacing: -0.5px; }
+
+.tb-symbol-btn { font-size: 13px; font-weight: 600; color: var(--text) !important; padding: 0 10px; }
+.tb-symbol-btn:hover { background: rgba(255,255,255,0.08) !important; }
+
+.tb-select {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 11px; font-family: inherit; cursor: pointer; outline: none;
+  padding: 0 2px;
+}
+.tb-select:hover { color: var(--text); }
+.tb-select option { background: var(--elevated); color: var(--text); }
+
+.tb-timeframes { display: flex; gap: 1px; }
+.tb-tf {
+  padding: 3px 7px; border-radius: 3px; font-size: 11px; font-weight: 500;
+  color: var(--muted); background: transparent; border: none; cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+.tb-tf:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.tb-tf.active { color: var(--accent); background: var(--accent-dim); }
+
+.tb-connection {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 8px; font-size: 11px; color: var(--muted);
+}
+.tb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.tb-dot--connected { background: var(--green); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+.tb-dot--connecting { background: var(--orange); }
+.tb-dot--error { background: var(--red); }
+</style>
+
+<script is:inline>
+function toggleMenu(id) {
+  const menu = document.getElementById(id);
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  closeMenus();
+  if (!isOpen) menu.style.display = 'block';
+}
+function closeMenus() {
+  document.querySelectorAll('.tb-menu').forEach(m => m.style.display = 'none');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tb-dropdown') && !e.target.closest('.tb-menu')) closeMenus();
+});
+
+function tbDispatch(event) {
+  window.dispatchEvent(new Event(event));
+  closeMenus();
+}
+
+function toggleView(event, btn) {
+  window.dispatchEvent(new Event(event));
+  btn.classList.toggle('active');
+  closeMenus();
+}
+
+function setChartType(btn) {
+  const type = btn.dataset.charttype;
+  document.querySelectorAll('#charttype-menu .tb-menu-item').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('charttype-label').textContent = btn.textContent.trim();
+  window.__loomChart?.setCandleStyle(type);
+  closeMenus();
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.classList.toggle('dark');
+  document.getElementById('theme-icon-sun').style.display = isDark ? 'none' : 'block';
+  document.getElementById('theme-icon-moon').style.display = isDark ? 'block' : 'none';
+  window.__loomChart?.setTheme(isDark);
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+}
+
+function openGridPicker(e) {
+  window.dispatchEvent(new CustomEvent('toggle-chart-grid-picker', { detail: { anchor: e.currentTarget } }));
+}
+
+function showPanelManager() {
+  window.__loomPanelManagerOpen = !window.__loomPanelManagerOpen;
+  window.dispatchEvent(new CustomEvent('toggle-panel-manager', { detail: { open: window.__loomPanelManagerOpen } }));
+}
+
+// Theme init
+(function() {
+  const theme = localStorage.getItem('theme') || 'dark';
+  const isDark = theme === 'dark';
+  if (!isDark) document.documentElement.classList.remove('dark');
+  document.addEventListener('DOMContentLoaded', () => {
+    const sunIcon = document.getElementById('theme-icon-sun');
+    const moonIcon = document.getElementById('theme-icon-moon');
+    if (sunIcon) sunIcon.style.display = isDark ? 'none' : 'block';
+    if (moonIcon) moonIcon.style.display = isDark ? 'block' : 'none';
+  });
+})();
+
+// Sync symbol label from symbol-changed event
+window.addEventListener('symbol-changed', e => {
+  const s = e.detail?.symbol;
+  if (s) {
+    const label = document.getElementById('topbar-symbol-label');
+    if (label) label.textContent = s;
+  }
+});
+
+// Timeframe pill clicks — bridge to Alpine tradingApp
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tb-tf').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tb-tf').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      window.dispatchEvent(new CustomEvent('topbar-set-timeframe', { detail: { tf: btn.dataset.tf } }));
+    });
+  });
+
+  // Sync with Alpine selectedSource
+  const sourceSelect = document.getElementById('topbar-source-select');
+  if (sourceSelect) {
+    sourceSelect.addEventListener('change', () => {
+      window.dispatchEvent(new CustomEvent('topbar-set-source', { detail: { source: sourceSelect.value } }));
+    });
+  }
+});
+</script>

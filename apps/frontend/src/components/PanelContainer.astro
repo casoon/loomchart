@@ -11,7 +11,7 @@
   .panel {
     position: relative;
     overflow: hidden;
-    border-bottom: 1px solid hsl(var(--border));
+    border-bottom: 1px solid var(--border);
   }
 
   .panel:last-child {
@@ -100,15 +100,15 @@
     justify-content: center;
     border-radius: 4px;
     background: hsl(var(--background) / 0.8);
-    border: 1px solid hsl(var(--border));
-    color: hsl(var(--muted-foreground));
+    border: 1px solid var(--border);
+    color: var(--muted);
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .panel-control-btn:hover {
-    background: hsl(var(--accent));
-    color: hsl(var(--foreground));
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
   }
 </style>
 
@@ -347,11 +347,11 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Placeholder rendering (will be replaced with actual chart data)
-      ctx.fillStyle = 'hsl(var(--muted) / 0.1)';
+      ctx.fillStyle = 'rgba(122,136,153,0.06)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Grid
-      ctx.strokeStyle = 'hsl(var(--border))';
+      ctx.strokeStyle = '#2b3245';
       ctx.lineWidth = 1;
       const gridSpacing = 50 * window.devicePixelRatio;
       for (let y = 0; y < canvas.height; y += gridSpacing) {
@@ -362,7 +362,7 @@
       }
 
       // Title
-      ctx.fillStyle = 'hsl(var(--muted-foreground))';
+      ctx.fillStyle = '#7a8899';
       ctx.font = `${14 * window.devicePixelRatio}px sans-serif`;
       ctx.fillText(`${panel.title} - Panel Content`, 20 * window.devicePixelRatio, 40 * window.devicePixelRatio);
     }

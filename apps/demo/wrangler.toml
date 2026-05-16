@@ -1,5 +1,6 @@
 name = "loomchart-demo"
-compatibility_date = "2025-01-01"
+account_id = "817ec8f792eea2e272a0a6cf03ccb57d"
+compatibility_date = "2026-05-16"
 
 [assets]
 directory = "./dist"

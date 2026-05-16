@@ -1,0 +1,543 @@
+---
+/**
+ * Alert Manager UI (#30)
+ *
+ * Create/manage price alerts with three delivery methods:
+ *   - Email (SMTP via Phoenix + Swoosh)
+ *   - Push  (Web Push API + service worker)
+ *   - Webhook (HTTP POST — e.g. Discord, Slack)
+ *
+ * Persists alerts server-side via the /api/alerts REST endpoint.
+ */
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:4000';
+---
+
+<div id="alert-manager" class="alert-manager hidden">
+  <div class="am-header">
+    <h3>Alerts</h3>
+    <button id="am-close" class="am-close-btn">×</button>
+  </div>
+
+  <!-- Push subscription status -->
+  <div id="am-push-bar" class="am-push-bar hidden">
+    <span id="am-push-status">Push not enabled</span>
+    <button id="am-push-toggle" class="am-push-btn">Enable Push</button>
+  </div>
+
+  <!-- Create new alert -->
+  <details class="am-create-section" open>
+    <summary class="am-section-title">New Alert</summary>
+    <div class="am-form">
+      <div class="am-field">
+        <label>Symbol</label>
+        <input id="am-symbol" type="text" placeholder="BTCUSDT" value="BTCUSDT" />
+      </div>
+      <div class="am-field">
+        <label>Condition</label>
+        <select id="am-condition">
+          <option value="price_above">Price above</option>
+          <option value="price_below">Price below</option>
+          <option value="percent_change_above">% change above</option>
+          <option value="percent_change_below">% change below</option>
+        </select>
+      </div>
+      <div class="am-field">
+        <label>Value</label>
+        <input id="am-value" type="number" placeholder="e.g. 100000" step="any" />
+      </div>
+      <div class="am-field">
+        <label>Delivery</label>
+        <select id="am-delivery">
+          <option value="email">Email</option>
+          <option value="push">Push Notification</option>
+          <option value="webhook">Webhook</option>
+        </select>
+      </div>
+      <div class="am-field" id="am-endpoint-field">
+        <label id="am-endpoint-label">Email address</label>
+        <input id="am-endpoint" type="text" placeholder="you@example.com" />
+      </div>
+      <div class="am-field" id="am-webhook-test-row" style="display:none">
+        <button id="am-test-webhook" class="am-btn-secondary">Test Webhook</button>
+      </div>
+      <div class="am-field">
+        <label>Cooldown (seconds, 0 = fire once)</label>
+        <input id="am-cooldown" type="number" value="0" min="0" />
+      </div>
+      <button id="am-create-btn" class="am-btn-primary">Create Alert</button>
+    </div>
+  </details>
+
+  <!-- Alert list -->
+  <div class="am-section-title" style="margin-top:10px;">Active Alerts</div>
+  <div id="am-list" class="am-list">
+    <div class="am-empty">Loading…</div>
+  </div>
+</div>
+
+<style>
+  .alert-manager {
+    position: fixed;
+    right: 20px;
+    top: 120px;
+    width: 320px;
+    background: rgba(17, 24, 39, 0.98);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    z-index: 2000;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .alert-manager.hidden { display: none; }
+
+  .am-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px 8px 0 0;
+    flex-shrink: 0;
+  }
+  .am-header h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .am-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .am-close-btn:hover { color: #fff; }
+
+  .am-push-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: rgba(59,130,246,0.1);
+    border-bottom: 1px solid rgba(59,130,246,0.2);
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    flex-shrink: 0;
+  }
+  .am-push-bar.hidden { display: none; }
+
+  .am-push-btn {
+    background: rgba(59,130,246,0.25);
+    border: 1px solid rgba(59,130,246,0.4);
+    color: #60a5fa;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .am-push-btn:hover { background: rgba(59,130,246,0.4); }
+
+  .am-create-section {
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .am-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 12px 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+  summary.am-section-title { list-style: none; }
+  summary.am-section-title::marker { display: none; }
+
+  .am-form {
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .am-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .am-field label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .am-field input,
+  .am-field select {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: #e5e7eb;
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .am-field input:focus,
+  .am-field select:focus { border-color: rgba(59,130,246,0.5); }
+
+  .am-btn-primary {
+    background: #3b82f6;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background 0.15s;
+  }
+  .am-btn-primary:hover { background: #2563eb; }
+
+  .am-btn-secondary {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.55);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .am-btn-secondary:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+  .am-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0 8px;
+  }
+
+  .am-alert-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .am-alert-info { flex: 1; min-width: 0; }
+  .am-alert-symbol {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+  .am-alert-desc {
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .am-alert-badge {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .am-alert-badge.email   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .am-alert-badge.push    { background: rgba(16,185,129,0.15); color: #34d399; }
+  .am-alert-badge.webhook { background: rgba(245,158,11,0.15); color: #fbbf24; }
+
+  .am-alert-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+
+  .am-toggle {
+    width: 28px;
+    height: 15px;
+    background: rgba(255,255,255,0.12);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .am-toggle::after {
+    content: '';
+    position: absolute;
+    width: 11px; height: 11px;
+    background: #fff;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    transition: transform 0.2s;
+  }
+  .am-toggle.active { background: #3b82f6; }
+  .am-toggle.active::after { transform: translateX(13px); }
+
+  .am-delete-btn {
+    background: none;
+    border: none;
+    color: rgba(248,113,113,0.4);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+  .am-delete-btn:hover { color: #f87171; }
+
+  .am-empty {
+    text-align: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    padding: 20px;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  const API = (window.__PUBLIC_API_URL__ || 'http://localhost:4000') + '/api';
+  let pushSubscription = null;
+  let alerts = [];
+
+  // ---------------------------------------------------------------------------
+  // Service worker + push
+  // ---------------------------------------------------------------------------
+  async function initPush() {
+    const bar = document.getElementById('am-push-bar');
+    const statusEl = document.getElementById('am-push-status');
+    const toggleBtn = document.getElementById('am-push-toggle');
+    if (!bar) return;
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      bar.classList.remove('hidden');
+      if (statusEl) statusEl.textContent = 'Push not supported in this browser';
+      if (toggleBtn) toggleBtn.style.display = 'none';
+      return;
+    }
+
+    bar.classList.remove('hidden');
+
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      const existing = await reg.pushManager.getSubscription();
+
+      if (existing) {
+        pushSubscription = existing;
+        if (statusEl) statusEl.textContent = 'Push enabled';
+        if (toggleBtn) toggleBtn.textContent = 'Disable Push';
+      } else {
+        if (statusEl) statusEl.textContent = 'Push not enabled';
+      }
+
+      toggleBtn?.addEventListener('click', async () => {
+        if (pushSubscription) {
+          await pushSubscription.unsubscribe();
+          pushSubscription = null;
+          if (statusEl) statusEl.textContent = 'Push disabled';
+          toggleBtn.textContent = 'Enable Push';
+        } else {
+          await subscribeToPush(reg);
+        }
+      });
+    } catch (e) {
+      if (statusEl) statusEl.textContent = 'Service worker error';
+      console.error('[AlertManager] SW error:', e);
+    }
+  }
+
+  async function subscribeToPush(registration) {
+    // VAPID public key must be set in env — use a placeholder for now.
+    const vapidKey = window.__VAPID_PUBLIC_KEY__ || '';
+    if (!vapidKey) {
+      alert('Push notifications require a VAPID public key (set PUBLIC_VAPID_KEY env variable).');
+      return;
+    }
+    try {
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+      pushSubscription = sub;
+      document.getElementById('am-push-status').textContent = 'Push enabled';
+      document.getElementById('am-push-toggle').textContent = 'Disable Push';
+    } catch (e) {
+      console.error('[AlertManager] Push subscribe failed:', e);
+      alert('Push subscription failed: ' + e.message);
+    }
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  }
+
+  // ---------------------------------------------------------------------------
+  // API helpers
+  // ---------------------------------------------------------------------------
+  async function fetchAlerts() {
+    try {
+      const r = await fetch(`${API}/alerts`);
+      const data = await r.json();
+      alerts = data.alerts || [];
+    } catch { alerts = []; }
+    renderList();
+  }
+
+  async function createAlert() {
+    const symbol   = document.getElementById('am-symbol')?.value.trim().toUpperCase();
+    const condition = document.getElementById('am-condition')?.value;
+    const value    = parseFloat(document.getElementById('am-value')?.value);
+    let delivery   = document.getElementById('am-delivery')?.value;
+    let endpoint   = document.getElementById('am-endpoint')?.value.trim();
+    const cooldown = parseInt(document.getElementById('am-cooldown')?.value || '0', 10);
+
+    if (!symbol || isNaN(value) || !endpoint) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+
+    // If delivery is push, use the current subscription JSON as endpoint.
+    if (delivery === 'push') {
+      if (!pushSubscription) {
+        alert('Enable push notifications first.');
+        return;
+      }
+      endpoint = JSON.stringify(pushSubscription.toJSON());
+    }
+
+    const body = { symbol, condition, value, delivery_method: delivery, endpoint, cooldown_seconds: cooldown };
+
+    try {
+      const r = await fetch(`${API}/alerts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await fetchAlerts();
+    } catch (e) {
+      alert('Failed to create alert: ' + e.message);
+    }
+  }
+
+  async function deleteAlert(id) {
+    await fetch(`${API}/alerts/${id}`, { method: 'DELETE' });
+    await fetchAlerts();
+  }
+
+  async function toggleAlert(id) {
+    await fetch(`${API}/alerts/${id}/toggle`, { method: 'POST' });
+    await fetchAlerts();
+  }
+
+  async function testWebhook() {
+    const url = document.getElementById('am-endpoint')?.value.trim();
+    if (!url) { alert('Enter a webhook URL first.'); return; }
+    const r = await fetch(`${API}/alerts/test-webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await r.json();
+    alert(data.ok ? 'Webhook test sent successfully!' : `Webhook test failed: ${data.error}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+  function renderList() {
+    const list = document.getElementById('am-list');
+    if (!list) return;
+
+    if (alerts.length === 0) {
+      list.innerHTML = '<div class="am-empty">No alerts configured</div>';
+      return;
+    }
+
+    list.innerHTML = alerts.map(a => `
+      <div class="am-alert-item">
+        <div class="am-alert-info">
+          <div class="am-alert-symbol">${a.symbol}</div>
+          <div class="am-alert-desc">${a.condition.replace(/_/g,' ')} ${a.value} · ${a.trigger_count} fires</div>
+        </div>
+        <span class="am-alert-badge ${a.delivery_method}">${a.delivery_method}</span>
+        <div class="am-alert-actions">
+          <button class="am-toggle ${a.active ? 'active' : ''}" data-id="${a.id}" title="Toggle"></button>
+          <button class="am-delete-btn" data-id="${a.id}" title="Delete">×</button>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.am-toggle').forEach(btn => {
+      btn.addEventListener('click', () => toggleAlert(btn.dataset.id));
+    });
+    list.querySelectorAll('.am-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Delete this alert?')) deleteAlert(btn.dataset.id);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Delivery method → endpoint label
+  // ---------------------------------------------------------------------------
+  function updateEndpointUI() {
+    const delivery = document.getElementById('am-delivery')?.value;
+    const label = document.getElementById('am-endpoint-label');
+    const input = document.getElementById('am-endpoint');
+    const testRow = document.getElementById('am-webhook-test-row');
+
+    const config = {
+      email:   { label: 'Email address', placeholder: 'you@example.com', type: 'email', showTest: false },
+      push:    { label: 'Push (auto-filled on create)', placeholder: '(uses current subscription)', type: 'text', showTest: false },
+      webhook: { label: 'Webhook URL',   placeholder: 'https://hooks.example.com/...', type: 'url', showTest: true },
+    }[delivery] || {};
+
+    if (label) label.textContent = config.label || '';
+    if (input) {
+      input.placeholder = config.placeholder || '';
+      input.type = config.type || 'text';
+      input.readOnly = delivery === 'push';
+      input.value = delivery === 'push' ? '' : (input.value || '');
+    }
+    if (testRow) testRow.style.display = config.showTest ? 'flex' : 'none';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('alert-manager');
+    if (!panel) return;
+
+    document.getElementById('am-close')?.addEventListener('click', () => panel.classList.add('hidden'));
+
+    window.addEventListener('toggle-alert-manager', () => {
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) fetchAlerts();
+    });
+
+    document.getElementById('am-delivery')?.addEventListener('change', updateEndpointUI);
+    document.getElementById('am-create-btn')?.addEventListener('click', createAlert);
+    document.getElementById('am-test-webhook')?.addEventListener('click', testWebhook);
+
+    updateEndpointUI();
+    initPush();
+    fetchAlerts();
+  });
+})();
+</script>

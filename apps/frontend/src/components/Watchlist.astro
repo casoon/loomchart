@@ -1,0 +1,412 @@
+---
+// Watchlist.astro (#32)
+// Collapsible panel showing watched symbols with live prices via Phoenix channels.
+---
+
+<div id="watchlist-panel" class="watchlist-panel hidden">
+  <div class="wl-header">
+    <span class="wl-title">Watchlist</span>
+    <div class="wl-header-actions">
+      <button id="wl-add-btn" class="wl-icon-btn" title="Add symbol">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+      <button id="wl-close-btn" class="wl-icon-btn" title="Close">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="wl-items" class="wl-items">
+    <!-- Rendered by JS -->
+  </div>
+</div>
+
+<style>
+  .watchlist-panel {
+    position: fixed;
+    left: 72px;
+    top: 64px;
+    bottom: 0;
+    width: 220px;
+    background: rgba(17, 24, 39, 0.97);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 1500;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .watchlist-panel.visible {
+    transform: translateX(0);
+  }
+
+  .watchlist-panel.hidden {
+    display: none;
+  }
+
+  .wl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+
+  .wl-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .wl-header-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .wl-icon-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .wl-icon-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .wl-items {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .wl-item {
+    display: flex;
+    align-items: center;
+    padding: 7px 12px;
+    gap: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+    user-select: none;
+  }
+
+  .wl-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .wl-item.dragging {
+    opacity: 0.4;
+  }
+
+  .wl-item.drag-over {
+    border-top: 2px solid rgba(59, 130, 246, 0.6);
+  }
+
+  .wl-drag-handle {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 12px;
+    cursor: grab;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .wl-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .wl-symbol {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e5e7eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wl-price {
+    font-size: 11px;
+    font-family: monospace;
+    color: #9ca3af;
+    margin-top: 1px;
+  }
+
+  .wl-change {
+    font-size: 10px;
+    font-family: monospace;
+    font-weight: 600;
+    min-width: 46px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .wl-change.positive { color: #34d399; }
+  .wl-change.negative { color: #f87171; }
+  .wl-change.neutral  { color: #6b7280; }
+
+  .wl-remove {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.18);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.12s;
+  }
+
+  .wl-remove:hover { color: #f87171; }
+</style>
+
+<script is:inline>
+(function () {
+  const DEFAULT_SYMBOLS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XAUUSD', 'EURUSD'];
+  const LS_KEY = 'loomchart_watchlist';
+
+  // { symbol: { price, prevClose, channel } }
+  const priceData = {};
+  const channels = {};
+
+  // -------------------------------------------------------------------------
+  // Persistence
+  // -------------------------------------------------------------------------
+  function loadSymbols() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return [...DEFAULT_SYMBOLS];
+  }
+
+  function saveSymbols(list) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch (_) {}
+  }
+
+  let watchlist = loadSymbols();
+
+  // -------------------------------------------------------------------------
+  // Phoenix channel subscription
+  // -------------------------------------------------------------------------
+  function subscribeSymbol(symbol) {
+    if (channels[symbol]) return;
+    const socket = window.__loomSocket;
+    if (!socket) return;
+
+    const topic = `candles:capitalcom:${symbol}:60`;
+    const ch = socket.channel(topic, {});
+
+    ch.on('new_candle', (candle) => {
+      const d = priceData[symbol] || {};
+      const newPrice = candle.c ?? candle.close;
+      const prevClose = d.price ?? newPrice;
+      priceData[symbol] = { price: newPrice, prevClose: d.prevClose ?? prevClose };
+      renderItems();
+    });
+
+    ch.join()
+      .receive('ok', () => {})
+      .receive('error', () => {});
+
+    channels[symbol] = ch;
+  }
+
+  function unsubscribeSymbol(symbol) {
+    const ch = channels[symbol];
+    if (ch) {
+      ch.leave();
+      delete channels[symbol];
+    }
+    delete priceData[symbol];
+  }
+
+  function subscribeAll() {
+    // Only attempt if socket is available
+    if (!window.__loomSocket) return;
+    watchlist.forEach(subscribeSymbol);
+  }
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+  let dragSrc = null;
+
+  function renderItems() {
+    const container = document.getElementById('wl-items');
+    if (!container) return;
+
+    if (watchlist.length === 0) {
+      container.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,0.3);text-align:center;padding:16px 0;">No symbols</div>';
+      return;
+    }
+
+    container.innerHTML = watchlist.map((symbol) => {
+      const d = priceData[symbol];
+      const price = d?.price;
+      const prevClose = d?.prevClose;
+      let changePct = null;
+      if (price != null && prevClose != null && prevClose !== 0) {
+        changePct = ((price - prevClose) / prevClose) * 100;
+      }
+
+      const priceStr = price != null ? price.toLocaleString('en-US', { maximumFractionDigits: 5 }) : '—';
+      const changeStr = changePct != null
+        ? (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
+        : '—';
+      const changeClass = changePct == null ? 'neutral' : changePct > 0 ? 'positive' : changePct < 0 ? 'negative' : 'neutral';
+
+      return `
+        <div class="wl-item" data-symbol="${symbol}" draggable="true">
+          <span class="wl-drag-handle" title="Drag to reorder">⠿</span>
+          <div class="wl-info">
+            <div class="wl-symbol">${symbol}</div>
+            <div class="wl-price">${priceStr}</div>
+          </div>
+          <span class="wl-change ${changeClass}">${changeStr}</span>
+          <button class="wl-remove" data-symbol="${symbol}" title="Remove">×</button>
+        </div>
+      `;
+    }).join('');
+
+    // Remove buttons
+    container.querySelectorAll('.wl-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeSymbol(btn.dataset.symbol);
+      });
+    });
+
+    // Symbol click → dispatch symbol-changed
+    container.querySelectorAll('.wl-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('wl-remove')) return;
+        const sym = el.dataset.symbol;
+        window.dispatchEvent(new CustomEvent('symbol-changed', { detail: { symbol: sym } }));
+      });
+
+      // Drag-and-drop
+      el.addEventListener('dragstart', (e) => {
+        dragSrc = el.dataset.symbol;
+        el.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        container.querySelectorAll('.wl-item').forEach(i => i.classList.remove('drag-over'));
+      });
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        container.querySelectorAll('.wl-item').forEach(i => i.classList.remove('drag-over'));
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const target = el.dataset.symbol;
+        if (!dragSrc || dragSrc === target) return;
+        const srcIdx = watchlist.indexOf(dragSrc);
+        const tgtIdx = watchlist.indexOf(target);
+        if (srcIdx === -1 || tgtIdx === -1) return;
+        watchlist.splice(srcIdx, 1);
+        watchlist.splice(tgtIdx, 0, dragSrc);
+        saveSymbols(watchlist);
+        renderItems();
+      });
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Add / remove
+  // -------------------------------------------------------------------------
+  function addSymbol(symbol) {
+    symbol = symbol.trim().toUpperCase();
+    if (!symbol || watchlist.includes(symbol)) return;
+    watchlist.push(symbol);
+    saveSymbols(watchlist);
+    subscribeSymbol(symbol);
+    renderItems();
+  }
+
+  function removeSymbol(symbol) {
+    watchlist = watchlist.filter(s => s !== symbol);
+    saveSymbols(watchlist);
+    unsubscribeSymbol(symbol);
+    renderItems();
+  }
+
+  // -------------------------------------------------------------------------
+  // Panel show/hide
+  // -------------------------------------------------------------------------
+  function showPanel() {
+    const panel = document.getElementById('watchlist-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    // Force reflow so transition plays
+    panel.getBoundingClientRect();
+    panel.classList.add('visible');
+    subscribeAll();
+  }
+
+  function hidePanel() {
+    const panel = document.getElementById('watchlist-panel');
+    if (!panel) return;
+    panel.classList.remove('visible');
+    // Hide after transition completes
+    setTimeout(() => {
+      if (!panel.classList.contains('visible')) {
+        panel.classList.add('hidden');
+      }
+    }, 260);
+  }
+
+  // -------------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    renderItems();
+
+    document.getElementById('wl-close-btn')?.addEventListener('click', hidePanel);
+
+    document.getElementById('wl-add-btn')?.addEventListener('click', () => {
+      // Open symbol search overlay and listen for a selection to add
+      window.dispatchEvent(new Event('open-symbol-search'));
+
+      function onSymbolSelected(e) {
+        const sym = e.detail?.symbol;
+        if (sym) addSymbol(sym);
+        window.removeEventListener('symbol-changed', onSymbolSelected);
+      }
+      window.addEventListener('symbol-changed', onSymbolSelected);
+    });
+
+    window.addEventListener('toggle-watchlist', () => {
+      const panel = document.getElementById('watchlist-panel');
+      if (!panel) return;
+      if (panel.classList.contains('hidden') || !panel.classList.contains('visible')) {
+        showPanel();
+      } else {
+        hidePanel();
+      }
+    });
+
+    // Try subscribing after a short delay in case socket initialises after DOMContentLoaded
+    setTimeout(subscribeAll, 1500);
+  });
+})();
+</script>

@@ -1,0 +1,33 @@
+[package]
+name = "loomchart-plugin-supertrend"
+version = "0.1.0"
+edition = "2021"
+description = "SuperTrend indicator plugin for LoomChart — reference implementation"
+license = "MIT"
+repository = "https://github.com/casoon/loom"
+
+# Plugin manifest embedded in Cargo.toml metadata.
+[package.metadata.loomchart]
+api-version  = "1"
+plugin-type  = "indicator"
+display-name = "SuperTrend"
+description  = "Trend-following overlay based on ATR bands (Olivier Seban)"
+version      = "0.1.0"
+category     = "trend"
+capabilities = []
+entry        = "plugin_entry"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+loom-plugin-sdk = { path = "../../packages/loom-plugin-sdk" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

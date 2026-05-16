@@ -1,4 +1,5 @@
 use crate::core::Viewport;
+#[cfg(feature = "wasm")]
 use crate::rendering::Canvas2DRenderer;
 use crate::Color;
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,7 @@ pub trait ChartTool: Send + Sync {
     fn nodes(&self) -> &[ToolNode];
 
     /// Render the tool
+    #[cfg(feature = "wasm")]
     fn render(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport);
 
     /// Hit test - check if point is on/near the tool
@@ -127,6 +129,7 @@ impl ToolManager {
     }
 
     /// Render all tools
+    #[cfg(feature = "wasm")]
     pub fn render_all(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport) {
         for tool in &self.tools {
             if tool.is_complete() {

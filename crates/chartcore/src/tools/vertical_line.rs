@@ -1,5 +1,6 @@
 use super::{ChartTool, ToolNode, ToolType};
 use crate::core::Viewport;
+#[cfg(feature = "wasm")]
 use crate::rendering::{Canvas2DRenderer, Renderer, TextAlign, TextBaseline};
 use crate::Color;
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,7 @@ impl ChartTool for VerticalLine {
         &self.nodes
     }
 
+    #[cfg(feature = "wasm")]
     fn render(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport) {
         if let Some(time) = self.time() {
             let x = viewport.time_to_x(time);

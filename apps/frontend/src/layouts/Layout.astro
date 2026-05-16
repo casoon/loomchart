@@ -15,31 +15,74 @@ const { title } = Astro.props;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
 
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
     <!-- WASM Loader -->
     <script type="module" src="/wasm-loader.js"></script>
 
     <style>
       :root {
-        --background: 222.2 84% 4.9%;
-        --foreground: 210 40% 98%;
-        --card: 222.2 84% 4.9%;
-        --card-foreground: 210 40% 98%;
-        --border: 217.2 32.6% 17.5%;
-        --input: 217.2 32.6% 17.5%;
-        --primary: 217.2 91.2% 59.8%;
-        --primary-foreground: 222.2 47.4% 11.2%;
-        --secondary: 217.2 32.6% 17.5%;
-        --secondary-foreground: 210 40% 98%;
-        --muted: 217.2 32.6% 17.5%;
-        --muted-foreground: 215 20.2% 65.1%;
-        --accent: 217.2 32.6% 17.5%;
-        --accent-foreground: 210 40% 98%;
+        --bg:          #0b0f17;
+        --surface:     #141921;
+        --elevated:    #1c2333;
+        --border:      #2b3245;
+        --text:        #d0d8e8;
+        --muted:       #7a8899;
+        --accent:      #4e9cff;
+        --accent-dim:  rgba(78,156,255,0.15);
+        --green:       #3fb950;
+        --red:         #f85149;
+        --orange:      #e3b341;
+
+        /* Tailwind compat aliases (HSL channels, no-conflict subset) */
+        --background:          0 0% 7%;
+        --foreground:          215 25% 88%;
+        --card:                220 27% 11%;
+        --card-foreground:     215 25% 88%;
+        --input:               220 22% 22%;
+        --primary:             213 100% 65%;
+        --primary-foreground:  220 27% 8%;
+        --secondary:           220 22% 18%;
+        --secondary-foreground:215 25% 88%;
+        --muted-foreground:    215 16% 55%;
       }
+
+      * { box-sizing: border-box; }
+      body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); }
 
       /* Alpine.js x-cloak - hide elements until Alpine is ready */
       [x-cloak] {
         display: none !important;
       }
+
+      .tb-btn {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 0 8px; height: 28px; border-radius: 4px;
+        font-size: 12px; font-weight: 500; color: var(--muted);
+        cursor: pointer; border: none; background: transparent;
+        transition: color 0.15s, background 0.15s;
+        white-space: nowrap;
+      }
+      .tb-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+      .tb-btn.active { color: var(--accent); background: var(--accent-dim); }
+      .tb-sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; margin: 0 2px; }
+      .tb-dropdown { position: relative; display: inline-flex; }
+      .tb-menu {
+        position: absolute; top: calc(100% + 4px); left: 0; min-width: 180px;
+        background: var(--elevated); border: 1px solid var(--border); border-radius: 6px;
+        padding: 4px; z-index: 200; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+      .tb-menu-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 10px; border-radius: 4px; font-size: 12px;
+        color: var(--muted); cursor: pointer; border: none; background: transparent;
+        width: 100%; text-align: left;
+      }
+      .tb-menu-item:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+      .tb-menu-item.active { color: var(--accent); }
     </style>
   </head>
   <body class="bg-background text-foreground antialiased">

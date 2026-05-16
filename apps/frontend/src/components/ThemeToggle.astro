@@ -1,0 +1,58 @@
+---
+// ThemeToggle.astro
+// Toolbar button to toggle dark/light mode.
+// Applies the 'dark' class on <html>, calls window.__loomChart?.setTheme(),
+// and persists the preference to localStorage.
+---
+
+<button
+  id="theme-toggle-btn"
+  class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground px-2.5 py-1"
+  title="Toggle dark/light theme"
+  aria-label="Toggle theme"
+>
+  <!-- Sun icon (shown in dark mode — click to go light) -->
+  <svg id="theme-icon-sun" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:none">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+      d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+  </svg>
+  <!-- Moon icon (shown in light mode — click to go dark) -->
+  <svg id="theme-icon-moon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+      d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+  </svg>
+</button>
+
+<script is:inline>
+  (function () {
+    var btn = document.getElementById('theme-toggle-btn');
+    var sunIcon = document.getElementById('theme-icon-sun');
+    var moonIcon = document.getElementById('theme-icon-moon');
+
+    function applyTheme(isDark) {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      // Show sun when dark (clicking will switch to light), moon when light
+      sunIcon.style.display = isDark ? '' : 'none';
+      moonIcon.style.display = isDark ? 'none' : '';
+
+      if (window.__loomChart && typeof window.__loomChart.setTheme === 'function') {
+        window.__loomChart.setTheme(isDark);
+      }
+    }
+
+    // Init: read from localStorage, fall back to current class state
+    var stored = localStorage.getItem('theme');
+    var isDark = stored !== null ? stored === 'dark' : document.documentElement.classList.contains('dark');
+    applyTheme(isDark);
+
+    btn.addEventListener('click', function () {
+      var nowDark = !document.documentElement.classList.contains('dark');
+      localStorage.setItem('theme', nowDark ? 'dark' : 'light');
+      applyTheme(nowDark);
+    });
+  })();
+</script>

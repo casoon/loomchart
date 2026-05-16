@@ -1,0 +1,312 @@
+---
+// NewsOverlay.astro (#36)
+// Shows economic events/news as vertical markers on the chart canvas.
+// Replace DEMO_EVENTS with a real API fetch when available.
+---
+
+<!-- Invisible hit-test divs injected by JS; tooltip rendered separately -->
+<div id="news-overlay-root" style="display:contents;">
+  <!-- Canvas sits over chart-main-container, injected by JS -->
+  <div id="news-hit-layer" style="position:absolute;inset:0;pointer-events:none;z-index:6;"></div>
+  <div id="news-tooltip" class="news-tooltip hidden"></div>
+</div>
+
+<canvas id="news-overlay-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6;display:none;"></canvas>
+
+<style>
+  .news-tooltip {
+    position: fixed;
+    background: rgba(17, 24, 39, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 8px 12px;
+    z-index: 2000;
+    pointer-events: none;
+    min-width: 180px;
+    max-width: 260px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+
+  .news-tooltip.hidden {
+    display: none;
+  }
+
+  .nt-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 3px;
+  }
+
+  .nt-type {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 4px;
+  }
+
+  .nt-type.high   { color: #f87171; }
+  .nt-type.medium { color: #fb923c; }
+  .nt-type.low    { color: #6b7280; }
+
+  .nt-desc {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    line-height: 1.4;
+  }
+
+  /* Hit-test divs placed by JS */
+  .news-hit-div {
+    position: absolute;
+    top: 0;
+    bottom: 20px;
+    width: 20px;
+    transform: translateX(-50%);
+    pointer-events: all;
+    cursor: pointer;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  // ---------------------------------------------------------------------------
+  // Demo events — replace with real API fetch
+  // ---------------------------------------------------------------------------
+  const DEMO_EVENTS = [
+    { timestamp: Math.floor(Date.now() / 1000) - 86400 * 7, title: 'FOMC Meeting',      type: 'high',   description: 'Federal Reserve interest rate decision' },
+    { timestamp: Math.floor(Date.now() / 1000) - 86400 * 5, title: 'CPI Data',          type: 'medium', description: 'US Consumer Price Index release' },
+    { timestamp: Math.floor(Date.now() / 1000) - 86400 * 3, title: 'NFP Report',        type: 'high',   description: 'Non-Farm Payrolls employment data' },
+    { timestamp: Math.floor(Date.now() / 1000) - 86400 * 1, title: 'ECB Rate Decision', type: 'medium', description: 'European Central Bank rate announcement' },
+    { timestamp: Math.floor(Date.now() / 1000) + 86400 * 2, title: 'Fed Chair Speech',  type: 'high',   description: 'Federal Reserve Chair public address' },
+    { timestamp: Math.floor(Date.now() / 1000) + 86400 * 5, title: 'GDP Release',       type: 'medium', description: 'US GDP quarterly data' },
+  ];
+
+  let enabled = false;
+  let viewport = null;
+  let mainCandles = [];
+
+  const canvas = document.getElementById('news-overlay-canvas');
+  const hitLayer = document.getElementById('news-hit-layer');
+  const tooltip = document.getElementById('news-tooltip');
+  let ctx = canvas ? canvas.getContext('2d') : null;
+
+  // ---------------------------------------------------------------------------
+  // Canvas sizing
+  // ---------------------------------------------------------------------------
+  function resizeCanvas() {
+    const parent = document.getElementById('chart-main-container');
+    if (!canvas || !parent) return;
+    const rect = parent.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Keep hit layer the same size
+    if (hitLayer) {
+      hitLayer.style.width = rect.width + 'px';
+      hitLayer.style.height = rect.height + 'px';
+    }
+
+    redraw();
+  }
+
+  // ---------------------------------------------------------------------------
+  // X-position computation
+  // ---------------------------------------------------------------------------
+  function timestampToX(ts) {
+    if (!viewport || !mainCandles || mainCandles.length === 0) return null;
+    const { firstIndex, lastIndex, canvasWidth } = viewport;
+    const visibleCandles = mainCandles.slice(firstIndex, lastIndex + 1);
+    if (visibleCandles.length === 0) return null;
+
+    // Check if window.__loomChart exposes getViewportInfo
+    if (window.__loomChart && typeof window.__loomChart.getViewportInfo === 'function') {
+      const info = window.__loomChart.getViewportInfo();
+      if (info && info.firstTimestamp && info.lastTimestamp) {
+        const { firstTimestamp, lastTimestamp } = info;
+        if (ts < firstTimestamp || ts > lastTimestamp) return null;
+        return ((ts - firstTimestamp) / (lastTimestamp - firstTimestamp)) * canvasWidth;
+      }
+    }
+
+    // Fallback: interpolate from candle times
+    const firstTime = visibleCandles[0].time;
+    const lastTime  = visibleCandles[visibleCandles.length - 1].time;
+    if (ts < firstTime || ts > lastTime) return null;
+    if (lastTime === firstTime) return 0;
+
+    const visibleCount = lastIndex - firstIndex + 1;
+    const xStep = canvasWidth / visibleCount;
+    // Find nearest candle
+    const relTime = ts - firstTime;
+    const timeRange = lastTime - firstTime;
+    const fraction = relTime / timeRange;
+    return fraction * (canvasWidth - xStep) + xStep / 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------------------
+  function redraw() {
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!enabled) {
+      clearHitDivs();
+      return;
+    }
+
+    const height = canvas.height;
+    const iconY = height - 20;
+
+    // Track which events are visible for hit-div placement
+    const visibleEvents = [];
+
+    DEMO_EVENTS.forEach(event => {
+      const x = timestampToX(event.timestamp);
+      if (x == null) return;
+
+      visibleEvents.push({ ...event, x });
+
+      // Dashed vertical line
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = event.type === 'high'
+        ? 'rgba(248, 113, 113, 0.45)'
+        : 'rgba(251, 146, 60, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height - 22);
+      ctx.stroke();
+      ctx.restore();
+
+      // Icon on X-axis area
+      ctx.save();
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      if (event.type === 'high') {
+        // Red diamond
+        ctx.fillStyle = '#f87171';
+        ctx.fillText('◆', x, iconY);
+      } else {
+        // Orange circle
+        ctx.fillStyle = '#fb923c';
+        ctx.fillText('●', x, iconY);
+      }
+      ctx.restore();
+    });
+
+    updateHitDivs(visibleEvents);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hit-test divs for tooltip (canvas is pointer-events:none)
+  // ---------------------------------------------------------------------------
+  function clearHitDivs() {
+    if (hitLayer) hitLayer.innerHTML = '';
+  }
+
+  function updateHitDivs(visibleEvents) {
+    if (!hitLayer) return;
+    hitLayer.innerHTML = '';
+
+    visibleEvents.forEach(event => {
+      const div = document.createElement('div');
+      div.className = 'news-hit-div';
+      div.style.left = event.x + 'px';
+
+      div.addEventListener('mouseenter', (e) => showTooltip(event, e));
+      div.addEventListener('mousemove', (e) => moveTooltip(e));
+      div.addEventListener('mouseleave', hideTooltip);
+
+      hitLayer.appendChild(div);
+    });
+  }
+
+  function showTooltip(event, e) {
+    if (!tooltip) return;
+    tooltip.innerHTML = `
+      <div class="nt-title">${event.title}</div>
+      <div class="nt-type ${event.type}">${event.type} impact</div>
+      <div class="nt-desc">${event.description}</div>
+    `;
+    tooltip.classList.remove('hidden');
+    moveTooltip(e);
+  }
+
+  function moveTooltip(e) {
+    if (!tooltip || tooltip.classList.contains('hidden')) return;
+    const x = e.clientX + 14;
+    const y = e.clientY - 10;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top  = y + 'px';
+  }
+
+  function hideTooltip() {
+    tooltip?.classList.add('hidden');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Panel visibility
+  // ---------------------------------------------------------------------------
+  function showOverlay() {
+    if (!canvas) return;
+    enabled = true;
+    canvas.style.display = '';
+    if (hitLayer) hitLayer.style.pointerEvents = 'none'; // container handles
+    redraw();
+  }
+
+  function hideOverlay() {
+    if (!canvas) return;
+    enabled = false;
+    canvas.style.display = 'none';
+    clearHitDivs();
+    hideTooltip();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    // Move canvas into chart-main-container so positioning works
+    const chartContainer = document.getElementById('chart-main-container');
+    if (chartContainer && canvas) {
+      chartContainer.appendChild(canvas);
+    }
+    if (chartContainer && hitLayer) {
+      chartContainer.appendChild(hitLayer);
+      hitLayer.style.position = 'absolute';
+      hitLayer.style.inset = '0';
+      hitLayer.style.pointerEvents = 'none';
+    }
+    if (tooltip) {
+      document.body.appendChild(tooltip);
+    }
+
+    window.addEventListener('toggle-news-overlay', () => {
+      if (enabled) {
+        hideOverlay();
+      } else {
+        showOverlay();
+      }
+    });
+
+    window.addEventListener('chart-viewport-changed', (e) => {
+      viewport = e.detail;
+      redraw();
+    });
+
+    window.addEventListener('chart-candles-updated', (e) => {
+      mainCandles = e.detail?.candles || [];
+      redraw();
+    });
+
+    const observerTarget = document.getElementById('chart-main-container') || document.body;
+    new ResizeObserver(resizeCanvas).observe(observerTarget);
+    resizeCanvas();
+  });
+})();
+</script>

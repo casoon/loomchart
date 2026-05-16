@@ -1,0 +1,579 @@
+---
+/**
+ * Indicator Alerts (#29)
+ *
+ * Frontend-side indicator threshold/crossover alerts using locally computed
+ * indicator values from the candle stream.
+ * DB: loom-alerts / store: indicator-alerts
+ * Toggle via `toggle-indicator-alerts` window event.
+ */
+---
+
+<div id="indicator-alerts-panel" class="ia-panel hidden">
+  <div class="ia-header">
+    <h3>Indicator Alerts</h3>
+    <button id="ia-close" class="ia-close-btn">×</button>
+  </div>
+
+  <!-- Create new alert -->
+  <details class="ia-create-section" open>
+    <summary class="ia-section-title">New Alert</summary>
+    <div class="ia-form">
+      <div class="ia-field">
+        <label>Symbol</label>
+        <input id="ia-symbol" type="text" placeholder="BTCUSD" />
+      </div>
+      <div class="ia-field">
+        <label>Indicator</label>
+        <select id="ia-indicator">
+          <option value="RSI">RSI (14)</option>
+          <option value="MACD">MACD Signal</option>
+          <option value="EMA">EMA (20)</option>
+          <option value="SMA">SMA (20)</option>
+          <option value="Stochastic">Stochastic %K</option>
+        </select>
+      </div>
+      <div class="ia-field">
+        <label>Condition</label>
+        <select id="ia-condition">
+          <option value="above">Above threshold</option>
+          <option value="below">Below threshold</option>
+          <option value="crossover_up">Crosses up through</option>
+          <option value="crossover_down">Crosses down through</option>
+        </select>
+      </div>
+      <div class="ia-field">
+        <label>Threshold</label>
+        <input id="ia-threshold" type="number" placeholder="e.g. 70" step="any" />
+      </div>
+      <button id="ia-add-btn" class="ia-btn-primary">Add Alert</button>
+    </div>
+  </details>
+
+  <!-- Active alerts -->
+  <div class="ia-section-title" style="margin-top:8px;">Active Alerts</div>
+  <div id="ia-list" class="ia-list">
+    <div class="ia-empty">No indicator alerts</div>
+  </div>
+
+  <!-- Trigger history -->
+  <div class="ia-section-title" style="margin-top:4px;">Recent Triggers</div>
+  <div id="ia-history" class="ia-history">
+    <div class="ia-empty">No history yet</div>
+  </div>
+</div>
+
+<style>
+  .ia-panel {
+    position: fixed;
+    right: 345px;
+    top: 120px;
+    width: 300px;
+    background: rgba(17, 24, 39, 0.98);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    z-index: 2100;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ia-panel.hidden { display: none; }
+
+  .ia-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px 8px 0 0;
+    flex-shrink: 0;
+  }
+  .ia-header h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .ia-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .ia-close-btn:hover { color: #fff; }
+
+  .ia-create-section {
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .ia-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 12px 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+  summary.ia-section-title { list-style: none; }
+  summary.ia-section-title::marker { display: none; }
+
+  .ia-form {
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ia-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .ia-field label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .ia-field input,
+  .ia-field select {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: #e5e7eb;
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .ia-field input:focus,
+  .ia-field select:focus { border-color: rgba(59,130,246,0.5); }
+
+  .ia-btn-primary {
+    background: #3b82f6;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background 0.15s;
+  }
+  .ia-btn-primary:hover { background: #2563eb; }
+
+  .ia-list {
+    overflow-y: auto;
+    max-height: 180px;
+    padding: 4px 0;
+    flex-shrink: 0;
+  }
+  .ia-history {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .ia-alert-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ia-alert-info { flex: 1; min-width: 0; }
+  .ia-alert-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+  .ia-alert-desc {
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    margin-top: 2px;
+  }
+  .ia-delete-btn {
+    background: none;
+    border: none;
+    color: rgba(248,113,113,0.4);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .ia-delete-btn:hover { color: #f87171; }
+
+  .ia-history-item {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    display: flex;
+    justify-content: space-between;
+  }
+  .ia-history-item span:first-child { color: rgba(255,255,255,0.7); }
+
+  .ia-empty {
+    text-align: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    padding: 16px;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  const DB_NAME = 'loom-alerts';
+  const STORE   = 'indicator-alerts';
+  const HISTORY_KEY = 'ia-trigger-history';
+  const MAX_HISTORY = 10;
+
+  // -------------------------------------------------------------------------
+  // IndexedDB helpers
+  // -------------------------------------------------------------------------
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('price-alerts')) {
+          db.createObjectStore('price-alerts', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror   = (e) => reject(e.target.error);
+    });
+  }
+
+  async function dbGetAll() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  async function dbPut(alert) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).put(alert);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  async function dbDelete(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Trigger history (localStorage, lightweight)
+  // -------------------------------------------------------------------------
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+  }
+
+  function saveHistory(h) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY))); } catch {}
+  }
+
+  function appendHistory(entry) {
+    const h = loadHistory();
+    h.unshift(entry);
+    saveHistory(h);
+  }
+
+  // -------------------------------------------------------------------------
+  // Indicator computations (pure JS, no WASM)
+  // -------------------------------------------------------------------------
+  function rsi14(candles) {
+    if (candles.length < 15) return null;
+    const closes = candles.slice(-15).map(c => c.c);
+    let gains = 0, losses = 0;
+    for (let i = 1; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) gains += diff; else losses -= diff;
+    }
+    const rs = gains / (losses || 0.001);
+    return 100 - 100 / (1 + rs);
+  }
+
+  function sma(candles, period) {
+    if (candles.length < period) return null;
+    const slice = candles.slice(-period).map(c => c.c);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  }
+
+  function ema(candles, period) {
+    if (candles.length < period) return null;
+    const k = 2 / (period + 1);
+    let e = candles[candles.length - period].c;
+    for (let i = candles.length - period + 1; i < candles.length; i++) {
+      e = candles[i].c * k + e * (1 - k);
+    }
+    return e;
+  }
+
+  // MACD signal line approximation: MACD line = EMA(12) - EMA(26)
+  function macdSignal(candles) {
+    if (candles.length < 35) return null;
+    const fast = ema(candles, 12);
+    const slow = ema(candles, 26);
+    if (fast === null || slow === null) return null;
+    return fast - slow;
+  }
+
+  // Stochastic %K (14-period)
+  function stochasticK(candles, period = 14) {
+    if (candles.length < period) return null;
+    const slice = candles.slice(-period);
+    const high  = Math.max(...slice.map(c => c.h));
+    const low   = Math.min(...slice.map(c => c.l));
+    const close = slice[slice.length - 1].c;
+    if (high === low) return 50;
+    return ((close - low) / (high - low)) * 100;
+  }
+
+  function computeIndicator(name, candles) {
+    switch (name) {
+      case 'RSI':        return rsi14(candles);
+      case 'MACD':       return macdSignal(candles);
+      case 'EMA':        return ema(candles, 20);
+      case 'SMA':        return sma(candles, 20);
+      case 'Stochastic': return stochasticK(candles);
+      default:           return null;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Alert trigger check
+  // -------------------------------------------------------------------------
+  // Store previous values per alert id
+  const prevValues = {};
+  // Rolling candle buffer (kept across events)
+  let candleBuffer = [];
+
+  async function checkAlerts(newCandle, allCandles) {
+    // Update candle buffer
+    if (allCandles && allCandles.length > 0) {
+      candleBuffer = allCandles;
+    } else if (newCandle) {
+      candleBuffer.push(newCandle);
+      if (candleBuffer.length > 200) candleBuffer.shift();
+    }
+    if (candleBuffer.length === 0) return;
+
+    const symbol = (window.__loomSymbol || 'BTCUSD').toUpperCase();
+    const alerts = await dbGetAll();
+
+    for (const alert of alerts) {
+      if (!alert.active) continue;
+      if (alert.symbol.toUpperCase() !== symbol) continue;
+
+      const current = computeIndicator(alert.indicator, candleBuffer);
+      if (current === null) continue;
+
+      const prev = prevValues[alert.id];
+      prevValues[alert.id] = current;
+
+      if (prev === undefined) continue;
+
+      let triggered = false;
+
+      switch (alert.condition) {
+        case 'above':
+          triggered = current >= alert.threshold;
+          break;
+        case 'below':
+          triggered = current <= alert.threshold;
+          break;
+        case 'crossover_up':
+          triggered = prev < alert.threshold && current >= alert.threshold;
+          break;
+        case 'crossover_down':
+          triggered = prev > alert.threshold && current <= alert.threshold;
+          break;
+      }
+
+      if (triggered) {
+        alert.active = false;
+        await dbPut(alert);
+
+        const historyEntry = {
+          id: alert.id,
+          symbol: alert.symbol,
+          indicator: alert.indicator,
+          condition: alert.condition,
+          threshold: alert.threshold,
+          value: current.toFixed(2),
+          firedAt: Date.now(),
+        };
+        appendHistory(historyEntry);
+        fireNotification(alert, current);
+        renderList();
+        renderHistory();
+      }
+    }
+  }
+
+  function fireNotification(alert, value) {
+    const condLabel = {
+      above: 'above',
+      below: 'below',
+      crossover_up: 'crossed up through',
+      crossover_down: 'crossed down through',
+    }[alert.condition] || alert.condition;
+
+    const body = `${alert.symbol} ${alert.indicator} (${value.toFixed(2)}) ${condLabel} ${alert.threshold}`;
+    if ('Notification' in window) {
+      Notification.requestPermission().then(perm => {
+        if (perm === 'granted') {
+          new Notification('Indicator Alert Triggered', { body, icon: '/favicon.svg' });
+        }
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // UI
+  // -------------------------------------------------------------------------
+  async function renderList() {
+    const list = document.getElementById('ia-list');
+    if (!list) return;
+    const alerts = await dbGetAll();
+    const symbol = (window.__loomSymbol || 'BTCUSD').toUpperCase();
+    const active = alerts.filter(a => a.active && a.symbol.toUpperCase() === symbol);
+
+    if (active.length === 0) {
+      list.innerHTML = '<div class="ia-empty">No indicator alerts</div>';
+      return;
+    }
+
+    const condLabel = { above: '>', below: '<', crossover_up: 'x↑', crossover_down: 'x↓' };
+
+    list.innerHTML = active.map(a => `
+      <div class="ia-alert-item">
+        <div class="ia-alert-info">
+          <div class="ia-alert-name">${a.indicator} ${condLabel[a.condition] || a.condition} ${a.threshold}</div>
+          <div class="ia-alert-desc">${a.symbol}</div>
+        </div>
+        <button class="ia-delete-btn" data-id="${a.id}" title="Delete">×</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.ia-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await dbDelete(btn.dataset.id);
+        delete prevValues[btn.dataset.id];
+        renderList();
+      });
+    });
+  }
+
+  function renderHistory() {
+    const el = document.getElementById('ia-history');
+    if (!el) return;
+    const history = loadHistory();
+
+    if (history.length === 0) {
+      el.innerHTML = '<div class="ia-empty">No history yet</div>';
+      return;
+    }
+
+    el.innerHTML = history.map(h => {
+      const time = new Date(h.firedAt).toLocaleTimeString();
+      return `
+        <div class="ia-history-item">
+          <span>${h.indicator} ${h.condition.replace(/_/g,' ')} ${h.threshold} (${h.value})</span>
+          <span>${time}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function addAlert() {
+    const symbol    = document.getElementById('ia-symbol')?.value.trim().toUpperCase() || (window.__loomSymbol || 'BTCUSD').toUpperCase();
+    const indicator = document.getElementById('ia-indicator')?.value || 'RSI';
+    const condition = document.getElementById('ia-condition')?.value || 'above';
+    const threshold = parseFloat(document.getElementById('ia-threshold')?.value);
+
+    if (!symbol || isNaN(threshold)) {
+      alert('Please fill in all fields.');
+      return;
+    }
+
+    const alert = {
+      id: `ia-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      symbol,
+      indicator,
+      condition,
+      threshold,
+      active: true,
+      createdAt: Date.now(),
+    };
+
+    await dbPut(alert);
+    document.getElementById('ia-threshold').value = '';
+    renderList();
+  }
+
+  // -------------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('indicator-alerts-panel');
+    if (!panel) return;
+
+    const symbolInput = document.getElementById('ia-symbol');
+    if (symbolInput) symbolInput.value = window.__loomSymbol || 'BTCUSD';
+
+    document.getElementById('ia-close')?.addEventListener('click', () => panel.classList.add('hidden'));
+
+    window.addEventListener('toggle-indicator-alerts', () => {
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) {
+        const sym = document.getElementById('ia-symbol');
+        if (sym) sym.value = window.__loomSymbol || 'BTCUSD';
+        renderList();
+        renderHistory();
+      }
+    });
+
+    document.getElementById('ia-add-btn')?.addEventListener('click', addAlert);
+
+    window.addEventListener('chart-candles-updated', (e) => {
+      const candle  = e.detail?.candle || e.detail?.lastCandle;
+      const candles = e.detail?.candles;
+      checkAlerts(candle, candles);
+    });
+
+    renderList();
+    renderHistory();
+  });
+})();
+</script>

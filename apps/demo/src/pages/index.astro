@@ -21,14 +21,17 @@ const lastCandleJson = JSON.stringify(lastCandle);
     <meta property="og:description" content="60fps candlestick charts running entirely in the browser via WebAssembly. No backend needed." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230d1117'/><rect x='5' y='18' width='4' height='9' rx='1' fill='%23f85149'/><rect x='6.5' y='14' width='1' height='5' rx='0.5' fill='%23f85149'/><rect x='6.5' y='26' width='1' height='3' rx='0.5' fill='%23f85149'/><rect x='13' y='12' width='4' height='10' rx='1' fill='%233fb950'/><rect x='14.5' y='8' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='14.5' y='21' width='1' height='4' rx='0.5' fill='%233fb950'/><rect x='21' y='8' width='4' height='12' rx='1' fill='%233fb950'/><rect x='22.5' y='4' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='22.5' y='19' width='1' height='5' rx='0.5' fill='%233fb950'/></svg>" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0f17'/><rect x='5' y='18' width='4' height='9' rx='1' fill='%23f85149'/><rect x='6.5' y='14' width='1' height='5' rx='0.5' fill='%23f85149'/><rect x='6.5' y='26' width='1' height='3' rx='0.5' fill='%23f85149'/><rect x='13' y='12' width='4' height='10' rx='1' fill='%233fb950'/><rect x='14.5' y='8' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='14.5' y='21' width='1' height='4' rx='0.5' fill='%233fb950'/><rect x='21' y='8' width='4' height='12' rx='1' fill='%233fb950'/><rect x='22.5' y='4' width='1' height='5' rx='0.5' fill='%233fb950'/><rect x='22.5' y='19' width='1' height='5' rx='0.5' fill='%233fb950'/></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { height: 100%; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; overflow: hidden; }
+      html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
       body { background: var(--bg); color: var(--fg); }
 
-      body.dark  { --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --border:#30363d; --fg:#e6edf3; --muted:#8b949e; --dim:#484f58; --accent:#58a6ff; --up:#3fb950; --dn:#f85149; --badge:#30363d; }
+      body.dark  { --bg:#0b0f17; --bg2:#141921; --bg3:#1c2333; --border:#2b3245; --fg:#d0d8e8; --muted:#7a8899; --dim:#4a5568; --accent:#4e9cff; --up:#3fb950; --dn:#f85149; --badge:#1c2333; }
       body.light { --bg:#ffffff; --bg2:#f6f8fa; --bg3:#eaeef2; --border:#d0d7de; --fg:#1f2328; --muted:#656d76; --dim:#9ea7b3; --accent:#0969da; --up:#1a7f37; --dn:#cf222e; --badge:#eaeef2; }
 
       /* Button base styles */

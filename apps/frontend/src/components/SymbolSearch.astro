@@ -1,0 +1,267 @@
+---
+// SymbolSearch.astro
+// Full-screen modal for fuzzy symbol search.
+// Opens via window.dispatchEvent(new Event('open-symbol-search')) or pressing '/'.
+// On selection: sets window.__loomSymbol, dispatches 'symbol-changed', updates recents.
+---
+
+<div
+  id="symbol-search-overlay"
+  style="display:none"
+  class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Symbol search"
+>
+  <div
+    id="symbol-search-box"
+    class="w-full max-w-lg bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
+  >
+    <!-- Input -->
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-border">
+      <svg class="w-4 h-4 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+      </svg>
+      <input
+        id="symbol-search-input"
+        type="text"
+        placeholder="Search symbol or name…"
+        autocomplete="off"
+        spellcheck="false"
+        class="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+      />
+      <kbd class="hidden sm:inline-flex text-[10px] text-muted-foreground border border-border rounded px-1 py-0.5">ESC</kbd>
+    </div>
+
+    <!-- Results list -->
+    <ul
+      id="symbol-search-results"
+      class="max-h-80 overflow-y-auto py-1"
+      role="listbox"
+    ></ul>
+
+    <!-- Footer hint -->
+    <div class="px-4 py-2 border-t border-border flex items-center gap-3 text-[10px] text-muted-foreground">
+      <span><kbd class="border border-border rounded px-1">↑↓</kbd> navigate</span>
+      <span><kbd class="border border-border rounded px-1">↵</kbd> select</span>
+      <span><kbd class="border border-border rounded px-1">ESC</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+(function () {
+  var ALL_SYMBOLS = [
+    { symbol: 'BTCUSD',   name: 'Bitcoin / US Dollar',     type: 'crypto' },
+    { symbol: 'ETHUSD',   name: 'Ethereum / US Dollar',    type: 'crypto' },
+    { symbol: 'SOLUSD',   name: 'Solana / US Dollar',      type: 'crypto' },
+    { symbol: 'BNBUSD',   name: 'BNB / US Dollar',         type: 'crypto' },
+    { symbol: 'ADAUSD',   name: 'Cardano / US Dollar',     type: 'crypto' },
+    { symbol: 'XRPUSD',   name: 'XRP / US Dollar',         type: 'crypto' },
+    { symbol: 'DOTUSD',   name: 'Polkadot / US Dollar',    type: 'crypto' },
+    { symbol: 'MATICUSD', name: 'Polygon / US Dollar',     type: 'crypto' },
+    { symbol: 'AVAXUSD',  name: 'Avalanche / US Dollar',   type: 'crypto' },
+    { symbol: 'LINKUSD',  name: 'Chainlink / US Dollar',   type: 'crypto' },
+    { symbol: 'AAPL',     name: 'Apple Inc.',               type: 'stock' },
+    { symbol: 'TSLA',     name: 'Tesla Inc.',               type: 'stock' },
+    { symbol: 'MSFT',     name: 'Microsoft Corp.',          type: 'stock' },
+    { symbol: 'GOOGL',    name: 'Alphabet Inc.',            type: 'stock' },
+    { symbol: 'AMZN',     name: 'Amazon.com Inc.',          type: 'stock' },
+    { symbol: 'EURUSD',   name: 'Euro / US Dollar',         type: 'forex' },
+    { symbol: 'GBPUSD',   name: 'GBP / US Dollar',         type: 'forex' },
+    { symbol: 'USDJPY',   name: 'US Dollar / Yen',          type: 'forex' },
+    { symbol: 'XAUUSD',   name: 'Gold / US Dollar',         type: 'commodity' },
+    { symbol: 'XAGUSD',   name: 'Silver / US Dollar',       type: 'commodity' },
+  ];
+
+  var TYPE_COLORS = {
+    crypto:    'text-yellow-500',
+    stock:     'text-blue-400',
+    forex:     'text-green-400',
+    commodity: 'text-orange-400',
+  };
+
+  var RECENTS_KEY = 'symbol-search-recents';
+  var MAX_RECENTS = 5;
+
+  var overlay = document.getElementById('symbol-search-overlay');
+  var input   = document.getElementById('symbol-search-input');
+  var list    = document.getElementById('symbol-search-results');
+
+  var activeIndex = -1;
+  var currentItems = [];
+
+  // ── Recents ──────────────────────────────────────────────────────────────
+  function getRecents() {
+    try {
+      return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function addRecent(symbol) {
+    var recents = getRecents().filter(function (s) { return s !== symbol; });
+    recents.unshift(symbol);
+    if (recents.length > MAX_RECENTS) recents = recents.slice(0, MAX_RECENTS);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(recents));
+  }
+
+  // ── Fuzzy match ───────────────────────────────────────────────────────────
+  function fuzzyMatch(query, item) {
+    var q = query.toLowerCase();
+    var sym = item.symbol.toLowerCase();
+    var name = item.name.toLowerCase();
+    return sym.includes(q) || name.includes(q);
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function renderResults(query) {
+    var recents = getRecents();
+    var results;
+
+    if (!query) {
+      // Show recents first, then rest
+      var recentItems = recents
+        .map(function (s) { return ALL_SYMBOLS.find(function (i) { return i.symbol === s; }); })
+        .filter(Boolean);
+      var recentSet = new Set(recents);
+      var rest = ALL_SYMBOLS.filter(function (i) { return !recentSet.has(i.symbol); });
+      results = recentItems.concat(rest);
+    } else {
+      results = ALL_SYMBOLS.filter(function (i) { return fuzzyMatch(query, i); });
+    }
+
+    currentItems = results;
+    activeIndex = results.length > 0 ? 0 : -1;
+
+    list.innerHTML = '';
+
+    if (results.length === 0) {
+      var empty = document.createElement('li');
+      empty.className = 'px-4 py-3 text-xs text-muted-foreground';
+      empty.textContent = 'No symbols found';
+      list.appendChild(empty);
+      return;
+    }
+
+    // Section label for recents (only when no query)
+    if (!query && recents.length > 0) {
+      var label = document.createElement('li');
+      label.className = 'px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground';
+      label.textContent = 'Recent';
+      list.appendChild(label);
+    }
+
+    results.forEach(function (item, idx) {
+      // Insert "All" section label after recents (no query)
+      if (!query && idx === recents.filter(function (s) {
+        return ALL_SYMBOLS.some(function (i) { return i.symbol === s; });
+      }).length && recents.length > 0) {
+        var allLabel = document.createElement('li');
+        allLabel.className = 'px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-t border-border';
+        allLabel.textContent = 'All Symbols';
+        list.appendChild(allLabel);
+      }
+
+      var li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('data-idx', String(idx));
+      li.className = [
+        'flex items-center gap-3 px-4 py-2.5 cursor-pointer text-sm select-none',
+        'hover:bg-accent hover:text-accent-foreground',
+        idx === activeIndex ? 'bg-accent text-accent-foreground' : '',
+      ].join(' ');
+
+      var typeColor = TYPE_COLORS[item.type] || 'text-muted-foreground';
+
+      li.innerHTML =
+        '<span class="font-semibold font-mono text-foreground w-24 shrink-0">' + item.symbol + '</span>' +
+        '<span class="text-muted-foreground truncate flex-1">' + item.name + '</span>' +
+        '<span class="text-[10px] uppercase ' + typeColor + ' font-medium w-14 text-right shrink-0">' + item.type + '</span>';
+
+      li.addEventListener('mouseenter', function () {
+        activeIndex = idx;
+        highlightActive();
+      });
+      li.addEventListener('click', function () {
+        selectItem(item);
+      });
+
+      list.appendChild(li);
+    });
+  }
+
+  function highlightActive() {
+    var items = list.querySelectorAll('li[data-idx]');
+    items.forEach(function (el) {
+      var idx = parseInt(el.getAttribute('data-idx'), 10);
+      if (idx === activeIndex) {
+        el.classList.add('bg-accent', 'text-accent-foreground');
+        el.scrollIntoView({ block: 'nearest' });
+      } else {
+        el.classList.remove('bg-accent', 'text-accent-foreground');
+      }
+    });
+  }
+
+  // ── Selection ─────────────────────────────────────────────────────────────
+  function selectItem(item) {
+    window.__loomSymbol = item.symbol;
+    addRecent(item.symbol);
+    window.dispatchEvent(new CustomEvent('symbol-changed', { detail: { symbol: item.symbol } }));
+    close();
+  }
+
+  // ── Open / Close ──────────────────────────────────────────────────────────
+  function open() {
+    overlay.style.display = '';
+    input.value = '';
+    renderResults('');
+    requestAnimationFrame(function () { input.focus(); });
+  }
+
+  function close() {
+    overlay.style.display = 'none';
+    input.value = '';
+  }
+
+  // ── Event wiring ──────────────────────────────────────────────────────────
+  window.addEventListener('open-symbol-search', open);
+
+  overlay.addEventListener('click', function (e) {
+    var box = document.getElementById('symbol-search-box');
+    if (!box.contains(e.target)) close();
+  });
+
+  input.addEventListener('input', function () {
+    activeIndex = 0;
+    renderResults(input.value.trim());
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (activeIndex < currentItems.length - 1) activeIndex++;
+      highlightActive();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (activeIndex > 0) activeIndex--;
+      highlightActive();
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (activeIndex >= 0 && currentItems[activeIndex]) {
+        selectItem(currentItems[activeIndex]);
+      }
+    }
+  });
+})();
+</script>

@@ -1,0 +1,423 @@
+---
+/**
+ * Multi-Symbol Comparison Overlay (#33)
+ *
+ * Shows up to 3 additional symbols as normalised %-change lines overlaid on
+ * the main chart canvas. Each line starts at 0 % at the leftmost visible
+ * candle (the base candle), so relative performance is immediately visible.
+ *
+ * Architecture:
+ *  - Comparison candle data is fetched via the same Phoenix channel that
+ *    powers the main chart: "candles:{source}:{symbol}:{timeframe}"
+ *  - Normalisation and rendering happen in JS on a dedicated overlay canvas
+ *    that is stacked above the main chart canvas via CSS.
+ *  - When the main chart viewport changes (pan, zoom) it emits a
+ *    "chart-viewport-changed" event with { firstIndex, lastIndex, xScale,
+ *    priceMin, priceMax, canvasWidth, canvasHeight } and the overlay redraws.
+ */
+---
+
+<!-- Legend + search panel -->
+<div id="symbol-compare" class="symbol-compare hidden">
+  <div class="sc-header">
+    <span class="sc-title">Compare</span>
+    <button id="sc-close" class="sc-close-btn">×</button>
+  </div>
+
+  <div class="sc-search-row">
+    <input
+      id="sc-symbol-input"
+      type="text"
+      placeholder="Symbol (e.g. ETHUSDT)"
+      autocomplete="off"
+      spellcheck="false"
+      maxlength="20"
+    />
+    <button id="sc-add-btn">Add</button>
+  </div>
+
+  <div id="sc-legend" class="sc-legend">
+    <!-- Legend items rendered by JS -->
+  </div>
+</div>
+
+<!-- Transparent overlay canvas for comparison lines -->
+<canvas
+  id="symbol-compare-canvas"
+  class="symbol-compare-canvas"
+  style="pointer-events:none;"
+></canvas>
+
+<style>
+  .symbol-compare {
+    position: fixed;
+    left: 90px;
+    top: 120px;
+    width: 240px;
+    background: rgba(17, 24, 39, 0.95);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    z-index: 1800;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .symbol-compare.hidden { display: none; }
+
+  .sc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sc-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .sc-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  .sc-close-btn:hover { color: #fff; }
+
+  .sc-search-row {
+    display: flex;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .sc-search-row input {
+    flex: 1;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 11px;
+    padding: 5px 8px;
+    outline: none;
+  }
+  .sc-search-row input:focus { border-color: rgba(59,130,246,0.5); }
+  .sc-search-row input::placeholder { color: rgba(255,255,255,0.25); }
+
+  .sc-search-row button {
+    background: rgba(59,130,246,0.2);
+    border: 1px solid rgba(59,130,246,0.4);
+    color: #60a5fa;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .sc-search-row button:hover {
+    background: rgba(59,130,246,0.35);
+    color: #fff;
+  }
+
+  .sc-legend {
+    padding: 4px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .sc-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .sc-symbol {
+    flex: 1;
+    font-weight: 500;
+    color: #e5e7eb;
+  }
+  .sc-perf {
+    font-family: monospace;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 54px;
+    text-align: right;
+  }
+  .sc-perf.positive { color: #34d399; }
+  .sc-perf.negative { color: #f87171; }
+  .sc-perf.neutral  { color: #9ca3af; }
+
+  .sc-remove {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.25);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .sc-remove:hover { color: #f87171; }
+
+  /* The overlay canvas sits over the main chart */
+  .symbol-compare-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  const MAX_SYMBOLS = 3;
+  const COLORS = ['#f59e0b', '#a78bfa', '#fb7185'];
+
+  // Comparison data: { symbol, color, candles: [{time,o,h,l,c,v}] }
+  const comparisons = [];
+
+  // Current viewport from the main chart
+  let viewport = null;
+  // Main chart candles (needed for normalisation baseline)
+  let mainCandles = [];
+
+  // -------------------------------------------------------------------------
+  // Canvas overlay
+  // -------------------------------------------------------------------------
+  const canvas = document.getElementById('symbol-compare-canvas');
+  let ctx = canvas ? canvas.getContext('2d') : null;
+
+  function resizeCanvas() {
+    const parent = document.getElementById('chart-main-container');
+    if (!canvas || !parent) return;
+    const rect = parent.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    redraw();
+  }
+
+  function redraw() {
+    if (!ctx || !viewport || comparisons.length === 0) {
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const { firstIndex, lastIndex, canvasWidth, canvasHeight } = viewport;
+    const visibleMain = mainCandles.slice(firstIndex, lastIndex + 1);
+    if (visibleMain.length === 0) return;
+
+    const baseTime = visibleMain[0].time;
+    const basePrice = visibleMain[0].c;
+
+    // Price axis: derive from main chart viewport (priceMin/priceMax → pixels)
+    const priceMin = viewport.priceMin;
+    const priceMax = viewport.priceMax;
+    const priceRange = priceMax - priceMin;
+    if (priceRange === 0) return;
+
+    // X-scale: one candle occupies (canvasWidth / visible count) pixels
+    const visibleCount = lastIndex - firstIndex + 1;
+    const xStep = canvasWidth / visibleCount;
+
+    function priceToY(price) {
+      // Normalised price in [0,1] where 1 = top
+      return canvasHeight - ((price - priceMin) / priceRange) * canvasHeight;
+    }
+
+    // Use a dedicated % scale: map %-change → priceToY equivalent
+    // We find the % change of the main chart and its visual span so that
+    // the comparison lines start at the same screen height as the main chart
+    // at basePrice (= firstIndex close).
+    const basePctY = priceToY(basePrice);
+
+    comparisons.forEach((comp, ci) => {
+      if (!comp.candles || comp.candles.length === 0) return;
+
+      // Build a time→close lookup
+      const lookup = new Map(comp.candles.map(c => [c.time, c.c]));
+
+      // Find the base close for this symbol at the same base time.
+      // Use the nearest candle before or at baseTime.
+      const sorted = comp.candles.filter(c => c.time <= baseTime);
+      if (sorted.length === 0) return;
+      const compBase = sorted[sorted.length - 1].c;
+      if (compBase === 0) return;
+
+      ctx.beginPath();
+      ctx.strokeStyle = comp.color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+
+      let first = true;
+      let lastPct = null;
+
+      for (let i = 0; i < visibleMain.length; i++) {
+        const mc = visibleMain[i];
+        const compClose = lookup.get(mc.time);
+        if (compClose == null) continue;
+
+        const pct = (compClose / compBase - 1) * 100;
+        // Map the % change to the same screen space as the main chart.
+        // We use the main chart's price per pixel to convert pct points.
+        // A +1% change on the comparison = +1% of basePrice in price terms.
+        const price = basePrice * (1 + pct / 100);
+        const x = i * xStep + xStep / 2;
+        const y = priceToY(price);
+
+        if (first) {
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+        lastPct = pct;
+      }
+
+      ctx.stroke();
+
+      // Update legend performance
+      if (lastPct !== null) {
+        const item = document.querySelector(`.sc-legend-item[data-symbol="${comp.symbol}"]`);
+        if (item) {
+          const perfEl = item.querySelector('.sc-perf');
+          if (perfEl) {
+            const sign = lastPct >= 0 ? '+' : '';
+            perfEl.textContent = `${sign}${lastPct.toFixed(2)}%`;
+            perfEl.className = `sc-perf ${lastPct > 0 ? 'positive' : lastPct < 0 ? 'negative' : 'neutral'}`;
+          }
+        }
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Legend management
+  // -------------------------------------------------------------------------
+  function renderLegend() {
+    const legend = document.getElementById('sc-legend');
+    if (!legend) return;
+
+    if (comparisons.length === 0) {
+      legend.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:center;padding:6px 0;">No symbols added</div>';
+      return;
+    }
+
+    legend.innerHTML = comparisons.map(comp => `
+      <div class="sc-legend-item" data-symbol="${comp.symbol}">
+        <div class="sc-dot" style="background:${comp.color}"></div>
+        <span class="sc-symbol">${comp.symbol}</span>
+        <span class="sc-perf neutral">—</span>
+        <button class="sc-remove" data-symbol="${comp.symbol}" title="Remove">×</button>
+      </div>
+    `).join('');
+
+    legend.querySelectorAll('.sc-remove').forEach(btn => {
+      btn.addEventListener('click', () => removeSymbol(btn.dataset.symbol));
+    });
+
+    redraw();
+  }
+
+  // -------------------------------------------------------------------------
+  // Add/remove symbols
+  // -------------------------------------------------------------------------
+  function addSymbol(symbol) {
+    symbol = symbol.trim().toUpperCase();
+    if (!symbol) return;
+    if (comparisons.length >= MAX_SYMBOLS) {
+      alert(`Maximum ${MAX_SYMBOLS} comparison symbols`);
+      return;
+    }
+    if (comparisons.some(c => c.symbol === symbol)) return;
+
+    const color = COLORS[comparisons.length];
+    comparisons.push({ symbol, color, candles: [] });
+    renderLegend();
+    fetchComparisonData(symbol);
+  }
+
+  function removeSymbol(symbol) {
+    const idx = comparisons.findIndex(c => c.symbol === symbol);
+    if (idx !== -1) comparisons.splice(idx, 1);
+    renderLegend();
+    redraw();
+  }
+
+  async function fetchComparisonData(symbol) {
+    // Try to get candles from the same source the main chart uses.
+    // We use a REST endpoint if available, falling back to the
+    // last known candles from the main chart symbol for demo purposes.
+    const event = new CustomEvent('comparison-fetch-candles', {
+      bubbles: true,
+      detail: { symbol, resolve: data => {
+        const comp = comparisons.find(c => c.symbol === symbol);
+        if (comp) {
+          comp.candles = data;
+          redraw();
+        }
+      }}
+    });
+    window.dispatchEvent(event);
+  }
+
+  // -------------------------------------------------------------------------
+  // Event listeners
+  // -------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('symbol-compare');
+
+    document.getElementById('sc-close')?.addEventListener('click', () => {
+      panel?.classList.add('hidden');
+    });
+
+    const input = document.getElementById('sc-symbol-input');
+    document.getElementById('sc-add-btn')?.addEventListener('click', () => {
+      addSymbol(input?.value || '');
+      if (input) input.value = '';
+    });
+    input?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        addSymbol(input.value);
+        input.value = '';
+      }
+    });
+
+    // Show/hide via toolbar event
+    window.addEventListener('toggle-symbol-compare', () => {
+      panel?.classList.toggle('hidden');
+    });
+
+    // Viewport updates from the main chart
+    window.addEventListener('chart-viewport-changed', e => {
+      viewport = e.detail;
+      redraw();
+    });
+
+    // Main chart candles updated
+    window.addEventListener('chart-candles-updated', e => {
+      mainCandles = e.detail.candles || [];
+      redraw();
+    });
+
+    // Resize
+    new ResizeObserver(resizeCanvas).observe(
+      document.getElementById('chart-main-container') || document.body
+    );
+    resizeCanvas();
+    renderLegend();
+  });
+})();
+</script>
