@@ -56,6 +56,10 @@ impl ChartTool for VerticalLine {
         &self.nodes
     }
 
+    fn nodes_mut(&mut self) -> &mut Vec<ToolNode> {
+        &mut self.nodes
+    }
+
     #[cfg(feature = "wasm")]
     fn render(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport) {
         if let Some(time) = self.time() {

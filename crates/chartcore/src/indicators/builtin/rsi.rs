@@ -114,6 +114,7 @@ impl IndicatorPlugin for RSIIndicator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Candle;
 
     #[test]
     fn test_rsi_indicator() {

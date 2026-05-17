@@ -4,6 +4,12 @@
 
 Loom is a real-time trading UI designed for displaying and analyzing candle-based market data. The architecture follows a modular approach with clear separation of concerns.
 
+## Product Architecture Decision
+
+The custom Rust/WASM + Canvas chart (`crates/chartcore` + `packages/wasm-core`) is the **canonical and primary rendering path** for LoomChart. All visualization, interaction, rendering, overlays, studies, and plugin-driven drawing must be built against this engine.
+
+Packages outside `crates/chartcore` that perform chart rendering (e.g. `packages/chart-wrapper/`) are **integration-only**: they carry no business logic, serve as migration aids while the engine matures, and will be retired once the engine covers their use cases. Do not add new rendering features to wrapper packages.
+
 ## Components
 
 ### 1. Phoenix Backend (Fly.io)
@@ -71,8 +77,8 @@ push(socket, "candle_final", %{...candle_data, is_final: true})
 **Location:** `packages/chart-wrapper/`
 
 **Responsibilities:**
-- Thin wrapper around `lightweight-charts`
-- Imperative API for WASM control
+- Optional integration wrapper for external chart rendering experiments
+- Migration aid while the custom WASM/Canvas engine matures
 - No business logic
 
 **API:**

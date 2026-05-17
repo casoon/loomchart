@@ -259,6 +259,81 @@ pub struct InvalidationLevels {
     pub volume: InvalidationLevel,
 }
 
+/// Render layer for layered invalidation tracking.
+///
+/// Layers are ordered from cheapest (Crosshair) to most expensive (Full).
+/// Higher discriminant values represent more expensive redraws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RenderLayer {
+    /// Cursor line and tooltip only — cheapest update
+    Crosshair = 0,
+    /// Lightweight overlays: alerts, labels
+    Overlay = 1,
+    /// Indicator lines
+    Indicators = 2,
+    /// Candle bars and grid
+    Candles = 3,
+    /// All layers including background
+    Full = 4,
+}
+
+/// Tracks dirty state per render layer.
+///
+/// Allows crosshair / hover updates to skip full candle redraws.
+pub struct LayeredInvalidation {
+    dirty: [bool; 5], // index = RenderLayer discriminant
+}
+
+impl LayeredInvalidation {
+    pub fn new() -> Self {
+        Self { dirty: [false; 5] }
+    }
+
+    pub fn mark_dirty(&mut self, layer: RenderLayer) {
+        self.dirty[layer as usize] = true;
+    }
+
+    pub fn mark_clean(&mut self, layer: RenderLayer) {
+        self.dirty[layer as usize] = false;
+    }
+
+    pub fn mark_all_clean(&mut self) {
+        self.dirty = [false; 5];
+    }
+
+    pub fn is_dirty(&self, layer: RenderLayer) -> bool {
+        self.dirty[layer as usize]
+    }
+
+    /// Returns true if any layer is dirty.
+    pub fn needs_render(&self) -> bool {
+        self.dirty.iter().any(|&d| d)
+    }
+
+    /// Returns the highest-numbered (most expensive) dirty layer, if any.
+    pub fn highest_dirty_layer(&self) -> Option<RenderLayer> {
+        const LAYERS: [RenderLayer; 5] = [
+            RenderLayer::Crosshair,
+            RenderLayer::Overlay,
+            RenderLayer::Indicators,
+            RenderLayer::Candles,
+            RenderLayer::Full,
+        ];
+        LAYERS.iter().copied().rev().find(|&l| self.dirty[l as usize])
+    }
+
+    /// Returns true only when the Full layer is dirty.
+    pub fn needs_full_render(&self) -> bool {
+        self.dirty[RenderLayer::Full as usize]
+    }
+}
+
+impl Default for LayeredInvalidation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +448,72 @@ mod tests {
         mask.invalidate_candles(InvalidationLevel::Light);
 
         assert_eq!(mask.candles, InvalidationLevel::Full);
+    }
+
+    // --- LayeredInvalidation tests ---
+
+    #[test]
+    fn test_layered_new_is_all_clean() {
+        let li = LayeredInvalidation::new();
+        assert!(!li.needs_render());
+        assert!(!li.is_dirty(RenderLayer::Crosshair));
+        assert!(!li.is_dirty(RenderLayer::Overlay));
+        assert!(!li.is_dirty(RenderLayer::Indicators));
+        assert!(!li.is_dirty(RenderLayer::Candles));
+        assert!(!li.is_dirty(RenderLayer::Full));
+    }
+
+    #[test]
+    fn test_layered_mark_dirty_sets_right_slot() {
+        let mut li = LayeredInvalidation::new();
+        li.mark_dirty(RenderLayer::Crosshair);
+        assert!(li.is_dirty(RenderLayer::Crosshair));
+        assert!(!li.is_dirty(RenderLayer::Candles));
+
+        li.mark_dirty(RenderLayer::Candles);
+        assert!(li.is_dirty(RenderLayer::Candles));
+        assert!(li.needs_render());
+    }
+
+    #[test]
+    fn test_layered_mark_all_clean_resets_all() {
+        let mut li = LayeredInvalidation::new();
+        li.mark_dirty(RenderLayer::Crosshair);
+        li.mark_dirty(RenderLayer::Full);
+        assert!(li.needs_render());
+
+        li.mark_all_clean();
+        assert!(!li.needs_render());
+        assert!(!li.is_dirty(RenderLayer::Crosshair));
+        assert!(!li.is_dirty(RenderLayer::Full));
+    }
+
+    #[test]
+    fn test_layered_highest_dirty_layer() {
+        let mut li = LayeredInvalidation::new();
+        assert_eq!(li.highest_dirty_layer(), None);
+
+        li.mark_dirty(RenderLayer::Crosshair);
+        assert_eq!(li.highest_dirty_layer(), Some(RenderLayer::Crosshair));
+
+        li.mark_dirty(RenderLayer::Indicators);
+        assert_eq!(li.highest_dirty_layer(), Some(RenderLayer::Indicators));
+
+        li.mark_dirty(RenderLayer::Full);
+        assert_eq!(li.highest_dirty_layer(), Some(RenderLayer::Full));
+    }
+
+    #[test]
+    fn test_layered_needs_full_render_only_when_full_dirty() {
+        let mut li = LayeredInvalidation::new();
+        li.mark_dirty(RenderLayer::Candles);
+        assert!(!li.needs_full_render());
+
+        li.mark_dirty(RenderLayer::Full);
+        assert!(li.needs_full_render());
+
+        li.mark_clean(RenderLayer::Full);
+        assert!(!li.needs_full_render());
+        assert!(li.is_dirty(RenderLayer::Candles)); // Candles still dirty
     }
 }

@@ -96,6 +96,60 @@ impl WasmChart {
         Ok(())
     }
 
+    /// Replace all candles (delegates to CandleBuffer::snapshot).
+    ///
+    /// Backward-compatible alias for `setCandles`; both methods accept the
+    /// same JSON format.
+    #[wasm_bindgen(js_name = setCandlesBatch)]
+    pub fn set_candles_batch(&mut self, candles_json: &str) -> Result<(), JsValue> {
+        use crate::core::CandleBuffer;
+
+        let incoming: Vec<Candle> = serde_json::from_str(candles_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse candles: {}", e)))?;
+
+        let mut buf = CandleBuffer::new();
+        buf.snapshot(incoming);
+        self.state.set_candles(buf.candles().to_vec());
+        Ok(())
+    }
+
+    /// Merge new candles into the existing dataset (delegates to CandleBuffer::append).
+    ///
+    /// Existing candles are kept; incoming candles are sorted and deduped.
+    /// Duplicate timestamps are overwritten by the incoming value.
+    #[wasm_bindgen(js_name = appendCandles)]
+    pub fn append_candles(&mut self, candles_json: &str) -> Result<(), JsValue> {
+        use crate::core::CandleBuffer;
+
+        let incoming: Vec<Candle> = serde_json::from_str(candles_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse candles: {}", e)))?;
+
+        let mut buf = CandleBuffer::new();
+        buf.snapshot(self.state.candles.clone());
+        buf.append(&incoming);
+        self.state.set_candles(buf.candles().to_vec());
+        Ok(())
+    }
+
+    /// Upsert a single candle by timestamp (delegates to CandleBuffer::update_running).
+    ///
+    /// Accepts a JSON object representing one candle.  If a candle with the
+    /// same `time` already exists it is replaced in-place; otherwise it is
+    /// inserted at the correct sorted position.
+    #[wasm_bindgen(js_name = updateRunningCandle)]
+    pub fn update_running_candle(&mut self, candle_json: &str) -> Result<(), JsValue> {
+        use crate::core::CandleBuffer;
+
+        let candle: Candle = serde_json::from_str(candle_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse candle: {}", e)))?;
+
+        let mut buf = CandleBuffer::new();
+        buf.snapshot(self.state.candles.clone());
+        buf.update_running(candle);
+        self.state.set_candles(buf.candles().to_vec());
+        Ok(())
+    }
+
     /// Add a single candle
     #[wasm_bindgen(js_name = addCandle)]
     pub fn add_candle(&mut self, time: i64, o: f64, h: f64, l: f64, c: f64, v: f64) {

@@ -445,7 +445,8 @@ mod tests {
     #[test]
     fn test_all_indicators() {
         let indicators = all_indicators();
-        assert_eq!(indicators.len(), 3);
+        // At minimum the 3 scientific indicators must be present; builtin registry adds more
+        assert!(indicators.len() >= 3);
 
         let ids: Vec<_> = indicators.iter().map(|i| i.id.as_str()).collect();
         assert!(ids.contains(&"shannon_entropy"));

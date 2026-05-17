@@ -351,6 +351,17 @@ Render: 16ms (60 FPS) ✅
 
 ## Benchmarking Tools
 
+### Criterion Benchmark Targets
+
+The following are target thresholds, not measured results. Run `cargo bench -p chartcore` to compare.
+
+| Scenario | Target |
+|---|---|
+| Initial load 1k candles | < 1ms |
+| Initial load 10k candles | < 5ms |
+| Initial load 100k candles | < 50ms |
+| Crosshair update | < 0.1ms |
+
 ### Run Benchmarks
 
 **Rust**:

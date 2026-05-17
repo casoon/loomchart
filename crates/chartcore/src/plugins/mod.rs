@@ -3,6 +3,7 @@
 pub mod builtin;
 pub mod loader;
 pub mod registry;
+pub mod study_runtime;
 pub mod types;
 
 pub use loader::WasmPluginLoader;

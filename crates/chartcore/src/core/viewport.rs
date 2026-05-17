@@ -367,14 +367,16 @@ mod tests {
     #[test]
     fn test_zoom() {
         let mut vp = Viewport::new(800, 600);
+        // 200 1h-bars = 200 * 3600s = 720_000s range
         vp.time = TimeRange {
-            start: 1000,
-            end: 2000,
+            start: 0,
+            end: 720_000,
         };
 
         vp.zoom(0.5, Some(400)); // Zoom in 2x at center
 
         let new_range = vp.time.end - vp.time.start;
-        assert_eq!(new_range, 500); // Half the range
+        // After zoom-in, range should be half (≈ 360_000s = 100 bars, well above 10-bar min)
+        assert_eq!(new_range, 360_000);
     }
 }

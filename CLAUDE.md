@@ -51,6 +51,7 @@ mix test                           # run tests
 
 ## Key Architectural Decisions
 
+- **Canonical rendering path**: The Rust/WASM + Canvas engine (`crates/chartcore` → `packages/wasm-core`) is the primary and canonical rendering path. All visualization, interaction, overlays, studies, and plugin-driven drawing must be built against this engine. Any other chart wrapper (e.g. `packages/chart-wrapper/`) is integration-only — it must not carry business logic, and it will be removed once migration is complete.
 - **Rust → WASM**: The chart engine (`crates/chartcore`) never calls browser APIs directly. It produces `RenderCommand` enums that the TypeScript layer executes on Canvas. This keeps the engine testable in pure Rust.
 - **Indicator pipeline**: Indicators are registered in `crates/chartcore/src/indicators/registry.rs` and use incremental state — they do NOT recalculate from scratch on each tick.
 - **WASM state**: All chart state lives in `packages/wasm-core/src/state.rs` (`AppState`). JavaScript interacts exclusively through the exported WASM functions.

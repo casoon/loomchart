@@ -94,6 +94,10 @@ impl ChartTool for TrendLine {
         &self.nodes
     }
 
+    fn nodes_mut(&mut self) -> &mut Vec<ToolNode> {
+        &mut self.nodes
+    }
+
     #[cfg(feature = "wasm")]
     fn render(&self, renderer: &mut Canvas2DRenderer, viewport: &Viewport) {
         if self.nodes.len() < 2 {

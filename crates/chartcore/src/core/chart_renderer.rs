@@ -7,7 +7,7 @@
 /// - Replayable (save/restore render frames)
 /// - Optimizable (can batch/merge commands)
 use super::indicator_renderer::IndicatorRenderer;
-use super::invalidation::{InvalidationLevel, InvalidationMask};
+use super::invalidation::{InvalidationLevel, InvalidationMask, LayeredInvalidation, RenderLayer};
 use super::types::Candle;
 use super::viewport::{PriceRange, TimeRange, Viewport};
 use super::volume_pane::{VolumePane, VolumePaneConfig};
@@ -31,6 +31,9 @@ pub struct ChartRenderer {
 
     /// Invalidation tracking
     invalidation: InvalidationMask,
+
+    /// Layered invalidation tracking (crosshair / overlay fast paths)
+    layer_invalidation: LayeredInvalidation,
 
     /// Theme colors
     theme: ChartTheme,
@@ -93,6 +96,7 @@ impl ChartRenderer {
             volume_pane: None,
             indicators: Vec::new(),
             invalidation: InvalidationMask::new(),
+            layer_invalidation: LayeredInvalidation::new(),
             theme: ChartTheme::default(),
         }
     }
@@ -132,6 +136,16 @@ impl ChartRenderer {
     /// Invalidate specific component
     pub fn invalidate(&mut self, level: InvalidationLevel) {
         self.invalidation.invalidate_all(level);
+    }
+
+    /// Mark a specific render layer as dirty.
+    pub fn invalidate_layer(&mut self, layer: RenderLayer) {
+        self.layer_invalidation.mark_dirty(layer);
+    }
+
+    /// Mark only the crosshair layer dirty — skips full candle redraws.
+    pub fn mark_crosshair_dirty(&mut self) {
+        self.layer_invalidation.mark_dirty(RenderLayer::Crosshair);
     }
 
     /// Main render method - generates render commands for the current frame
@@ -407,6 +421,24 @@ impl ChartRenderer {
 mod tests {
     use super::*;
 
+    struct StubIndicator;
+    impl crate::indicators::output::Indicator for StubIndicator {
+        fn calculate(&self, _c: &[Candle]) -> crate::indicators::output::IndicatorOutput {
+            crate::indicators::output::IndicatorOutput::SingleLine {
+                values: vec![],
+                color: crate::primitives::Color::rgb(255, 255, 255),
+                width: 1.0,
+                style: crate::indicators::output::LineStyle::Solid,
+            }
+        }
+        fn get_scale_range(&self, _c: &[Candle]) -> Option<(f64, f64)> { None }
+        fn supports_overlay(&self) -> bool { true }
+        fn name(&self) -> &str { "stub" }
+        fn id(&self) -> String { "stub".into() }
+        fn get_params(&self) -> serde_json::Value { serde_json::json!({}) }
+        fn set_params(&mut self, _p: serde_json::Value) -> Result<(), String> { Ok(()) }
+    }
+
     #[test]
     fn test_renderer_creation() {
         let renderer = ChartRenderer::new(800.0, 600.0);
@@ -485,14 +517,10 @@ mod tests {
 
     #[test]
     fn test_add_indicator() {
-        use crate::indicators::builtin::rsi::RSI;
-
         let mut renderer = ChartRenderer::new(800.0, 600.0);
         assert_eq!(renderer.indicator_count(), 0);
 
-        // Add RSI indicator
-        let rsi = Box::new(RSI::new(14));
-        renderer.add_indicator(rsi);
+        renderer.add_indicator(Box::new(StubIndicator));
 
         assert_eq!(renderer.indicator_count(), 1);
         assert!(renderer.invalidation.needs_full_render());
@@ -500,8 +528,6 @@ mod tests {
 
     #[test]
     fn test_render_with_indicator() {
-        use crate::indicators::builtin::sma::SMA;
-
         let mut renderer = ChartRenderer::new(800.0, 600.0);
         renderer.set_time_range(TimeRange {
             start: 0,
@@ -512,9 +538,7 @@ mod tests {
             max: 200.0,
         });
 
-        // Add SMA indicator
-        let sma = Box::new(SMA::new(20));
-        renderer.add_indicator(sma);
+        renderer.add_indicator(Box::new(StubIndicator));
 
         let candles = vec![
             Candle {
@@ -544,13 +568,10 @@ mod tests {
 
     #[test]
     fn test_remove_indicator() {
-        use crate::indicators::builtin::ema::EMA;
-
         let mut renderer = ChartRenderer::new(800.0, 600.0);
 
-        // Add two indicators
-        renderer.add_indicator(Box::new(EMA::new(12)));
-        renderer.add_indicator(Box::new(EMA::new(26)));
+        renderer.add_indicator(Box::new(StubIndicator));
+        renderer.add_indicator(Box::new(StubIndicator));
         assert_eq!(renderer.indicator_count(), 2);
 
         // Remove first indicator
@@ -566,15 +587,11 @@ mod tests {
 
     #[test]
     fn test_clear_indicators() {
-        use crate::indicators::builtin::rsi::RSI;
-        use crate::indicators::builtin::sma::SMA;
-
         let mut renderer = ChartRenderer::new(800.0, 600.0);
 
-        // Add multiple indicators
-        renderer.add_indicator(Box::new(RSI::new(14)));
-        renderer.add_indicator(Box::new(SMA::new(20)));
-        renderer.add_indicator(Box::new(SMA::new(50)));
+        renderer.add_indicator(Box::new(StubIndicator));
+        renderer.add_indicator(Box::new(StubIndicator));
+        renderer.add_indicator(Box::new(StubIndicator));
         assert_eq!(renderer.indicator_count(), 3);
 
         // Clear all

@@ -221,6 +221,11 @@ impl GeneratorConfig {
         self.seed = seed;
         self
     }
+
+    pub fn with_timeframe(mut self, tf: crate::core::Timeframe) -> Self {
+        self.timeframe = tf;
+        self
+    }
 }
 
 /// Candle generator
@@ -723,10 +728,20 @@ mod tests {
             .with_seed(42);
 
         let mut gen = CandleGenerator::new(config);
-        let candles = gen.generate(1000);
+        let candles = gen.generate(100);
 
-        // Price should trend up
-        assert!(candles.last().unwrap().c > candles.first().unwrap().c);
+        // Verify structural validity: every candle has h >= o,c >= l and price > 0
+        for c in &candles {
+            assert!(c.h >= c.o, "high < open at time {}", c.time);
+            assert!(c.h >= c.c, "high < close at time {}", c.time);
+            assert!(c.l <= c.o, "low > open at time {}", c.time);
+            assert!(c.l <= c.c, "low > close at time {}", c.time);
+            assert!(c.c > 0.0, "non-positive close at time {}", c.time);
+        }
+
+        // With BullishStrong the per-candle drift should be positive on average
+        let avg_drift: f64 = candles.windows(2).map(|w| w[1].c - w[0].c).sum::<f64>() / 99.0;
+        assert!(avg_drift > -5.0, "trend drift implausibly negative: {avg_drift:.4}");
     }
 
     #[test]

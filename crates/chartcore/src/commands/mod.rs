@@ -152,12 +152,13 @@ mod tests {
     #[test]
     fn test_command_inverse() {
         let drawing = Drawing::new(DrawingType::TrendLine, vec![]);
+        let expected_id = drawing.id.clone();
 
-        let add = Command::AddDrawing(drawing.clone());
+        let add = Command::AddDrawing(drawing);
         let remove = add.inverse();
 
         match remove {
-            Command::RemoveDrawing { id, .. } => assert_eq!(id, "test"),
+            Command::RemoveDrawing { id, .. } => assert_eq!(id, expected_id),
             _ => panic!("Expected RemoveDrawing"),
         }
     }

@@ -218,6 +218,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "console_error_panic_hook",
+ "criterion",
  "getrandom 0.2.16",
  "js-sys",
  "rand 0.8.5",
