@@ -168,7 +168,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <div class="flex gap-0.5">
         {timeframes.map((tf) => (
           <button
-            class={`btn btn-ghost tf-btn ${tf === defaultTf ? "active" : ""}`}
+            class="btn btn-ghost tf-btn"
             x-on:click={`switchTimeframe('${tf}')`}
             x-bind:class={`activeTf === '${tf}' ? 'active' : ''`}
           >{tf}</button>
