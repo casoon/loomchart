@@ -1,10 +1,9 @@
 ---
 /**
  * Indicator Selector Component
- * Clean list of all indicators grouped by category
+ * Search-first indicator library with favorites, multiple instances,
+ * per-instance Inputs/Style/Visibility/Remove controls, and templates.
  */
-import { getAllIndicators, getIndicatorMetadata } from '../lib/indicators/registry';
-import { addIndicatorToChart, removeIndicatorFromChart } from '../lib/indicators/chart-integration';
 ---
 
 <div id="indicator-selector" class="indicator-selector hidden">
@@ -13,459 +12,571 @@ import { addIndicatorToChart, removeIndicatorFromChart } from '../lib/indicators
     <button id="close-selector" class="close-btn" title="Close">×</button>
   </div>
 
-  <div id="indicator-categories" class="indicator-categories">
-    <!-- Categories will be populated dynamically from WASM metadata -->
+  <div class="selector-search">
+    <input id="indicator-search" type="text" placeholder="Search indicators…" autocomplete="off" />
+  </div>
+
+  <div class="selector-tabs">
+    <button class="sel-tab active" data-tab="browse">Browse</button>
+    <button class="sel-tab" data-tab="active">Active <span id="active-count" class="tab-badge">0</span></button>
+    <button class="sel-tab" data-tab="templates">Templates</button>
+  </div>
+
+  <div class="selector-body">
+    <div id="tab-browse" class="sel-panel">
+      <div id="favorites-section" class="fav-section" hidden>
+        <div class="section-label">★ Favorites</div>
+        <div id="favorites-list"></div>
+      </div>
+      <div id="indicator-categories" class="indicator-categories"></div>
+      <div id="search-empty" class="empty-msg" hidden>No indicators match your search.</div>
+    </div>
+
+    <div id="tab-active" class="sel-panel" hidden>
+      <div id="active-list"></div>
+      <div id="active-empty" class="empty-msg">No active indicators. Add one from Browse.</div>
+    </div>
+
+    <div id="tab-templates" class="sel-panel" hidden>
+      <button id="save-template-btn" class="primary-btn">Save current indicators as template</button>
+      <div id="template-list"></div>
+      <div id="template-empty" class="empty-msg">No saved templates yet.</div>
+    </div>
   </div>
 </div>
 
 <style>
   .indicator-selector {
-    position: fixed;
-    right: 20px;
-    top: 120px;
-    width: 320px;
+    position: fixed; right: 20px; top: 120px; width: 340px;
     background: rgba(17, 24, 39, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 8px;
-    padding: 0;
-    z-index: 2000;
+    border-radius: 8px; z-index: 2000;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     max-height: calc(100vh - 140px);
-    display: flex;
-    flex-direction: column;
+    display: flex; flex-direction: column;
   }
-
-  .indicator-selector.hidden {
-    display: none;
-  }
+  .indicator-selector.hidden { display: none; }
 
   .selector-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px 8px 0 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3); border-radius: 8px 8px 0 0;
   }
-
   .selector-header h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: #fff;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
+    margin: 0; font-size: 14px; font-weight: 600; color: #fff;
+    letter-spacing: 0.3px; text-transform: uppercase;
   }
-
   .close-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.6);
-    cursor: pointer;
-    padding: 0;
-    font-size: 24px;
-    line-height: 1;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
+    background: none; border: none; color: rgba(255, 255, 255, 0.6);
+    cursor: pointer; font-size: 24px; line-height: 1; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center; transition: color 0.2s;
+  }
+  .close-btn:hover { color: #fff; }
+
+  .selector-search { padding: 10px 12px 6px; }
+  .selector-search input {
+    width: 100%; box-sizing: border-box; padding: 8px 10px;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px; color: #fff; font-size: 13px;
+  }
+  .selector-search input:focus { outline: none; border-color: #60a5fa; }
+
+  .selector-tabs { display: flex; gap: 2px; padding: 0 12px; }
+  .sel-tab {
+    flex: 1; background: none; border: none; cursor: pointer;
+    padding: 8px 4px; font-size: 12px; color: rgba(255,255,255,0.55);
+    border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
+  }
+  .sel-tab:hover { color: rgba(255,255,255,0.85); }
+  .sel-tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+  .tab-badge {
+    background: rgba(96,165,250,0.25); color: #60a5fa;
+    border-radius: 8px; padding: 0 5px; font-size: 10px;
   }
 
-  .close-btn:hover {
-    color: #fff;
-  }
+  .selector-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .sel-panel { padding: 0 4px; }
 
-  .indicator-categories {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0;
+  .section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.4); padding: 6px 14px;
   }
-
-  .category {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .category:last-child {
-    border-bottom: none;
-  }
+  .empty-msg { padding: 16px; color: rgba(255,255,255,0.4); font-size: 12px; text-align: center; }
 
   .category-header {
-    width: 100%;
-    background: rgba(255, 255, 255, 0.03);
-    border: none;
-    padding: 10px 16px;
-    text-align: left;
-    cursor: pointer;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    transition: background 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    width: 100%; background: rgba(255, 255, 255, 0.03); border: none;
+    padding: 9px 14px; text-align: left; cursor: pointer;
+    color: rgba(255, 255, 255, 0.9); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    display: flex; align-items: center; justify-content: space-between;
   }
-
-  .category-header:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .category-header.expanded {
-    background: rgba(59, 130, 246, 0.1);
-    color: #60a5fa;
-  }
-
-  .category-toggle {
-    font-size: 10px;
-    transition: transform 0.2s;
-  }
-
-  .category-header.expanded .category-toggle {
-    transform: rotate(90deg);
-  }
-
-  .category-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-  }
-
-  .category-content.expanded {
-    max-height: 2000px;
-  }
+  .category-header:hover { background: rgba(255, 255, 255, 0.06); }
+  .category-toggle { font-size: 10px; transition: transform 0.2s; }
+  .category-header.expanded .category-toggle { transform: rotate(90deg); }
+  .category-content { display: none; }
+  .category-content.expanded { display: block; }
 
   .indicator-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px 8px 32px;
-    cursor: pointer;
-    transition: background 0.2s;
-    border-left: 3px solid transparent;
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px 7px 24px; cursor: pointer; transition: background 0.15s;
   }
+  .indicator-item:hover { background: rgba(255, 255, 255, 0.05); }
+  .indicator-name { flex: 1; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+  .ind-star {
+    background: none; border: none; cursor: pointer; font-size: 14px;
+    color: rgba(255,255,255,0.25); padding: 0;
+  }
+  .ind-star.faved { color: #fbbf24; }
+  .ind-add {
+    width: 20px; height: 20px; border-radius: 4px; border: none; cursor: pointer;
+    background: rgba(59, 130, 246, 0.2); color: #60a5fa; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ind-add:hover { background: rgba(59, 130, 246, 0.35); }
 
-  .indicator-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+  .active-row {
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+    margin: 4px 8px; background: rgba(255,255,255,0.02);
   }
+  .active-head {
+    display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  }
+  .active-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .active-title { flex: 1; font-size: 13px; color: #fff; }
+  .active-title.hidden-ind { opacity: 0.4; text-decoration: line-through; }
+  .icon-btn {
+    background: none; border: none; cursor: pointer; padding: 2px;
+    color: rgba(255,255,255,0.5); font-size: 13px;
+  }
+  .icon-btn:hover { color: #fff; }
+  .icon-btn.danger:hover { color: #ef4444; }
 
-  .indicator-item.active {
-    background: rgba(34, 197, 94, 0.1);
-    border-left-color: #22c55e;
+  .active-settings { padding: 4px 10px 10px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .param-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0; font-size: 12px; color: rgba(255,255,255,0.8);
   }
+  .param-row input[type=number] {
+    width: 70px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15);
+    color: #fff; border-radius: 4px; padding: 3px 6px; font-size: 12px;
+  }
+  .param-row input[type=color] { width: 38px; height: 22px; border: none; background: none; }
 
-  .indicator-name {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.85);
-    font-weight: 400;
+  .primary-btn {
+    width: calc(100% - 16px); margin: 4px 8px; padding: 8px;
+    background: #2563eb; color: #fff; border: none; border-radius: 6px;
+    font-size: 12px; cursor: pointer;
   }
+  .primary-btn:hover { background: #3b82f6; }
 
-  .indicator-item.active .indicator-name {
-    color: #fff;
-    font-weight: 500;
+  .template-row {
+    display: flex; align-items: center; gap: 6px;
+    margin: 4px 8px; padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
   }
+  .template-name { flex: 1; font-size: 13px; color: #fff; }
+  .template-meta { font-size: 11px; color: rgba(255,255,255,0.4); }
 
-  .indicator-action {
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 600;
-    background: rgba(59, 130, 246, 0.2);
-    color: #60a5fa;
-    transition: all 0.2s;
-    flex-shrink: 0;
-  }
-
-  .indicator-action:hover {
-    background: rgba(59, 130, 246, 0.3);
-    transform: scale(1.1);
-  }
-
-  .indicator-item.active .indicator-action {
-    background: rgba(34, 197, 94, 0.2);
-    color: #22c55e;
-  }
-
-  .indicator-item.active .indicator-action::before {
-    content: '✓';
-  }
-
-  .indicator-item:not(.active) .indicator-action::before {
-    content: '+';
-  }
-
-  /* Scrollbar styling */
-  .indicator-categories::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .indicator-categories::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-  }
-
-  .indicator-categories::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-  }
-
-  .indicator-categories::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
+  .selector-body::-webkit-scrollbar { width: 6px; }
+  .selector-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
 </style>
 
 <script>
-  console.log('[IndicatorSelector] Script loaded');
+  import {
+    addIndicatorToChart,
+    removeIndicatorFromChart,
+    updateIndicatorConfig,
+    getActiveIndicators,
+  } from '../lib/indicators/chart-integration';
 
-  // Use readystatechange to handle both cases: document already loaded or still loading
-  async function initIndicatorSelector() {
-    console.log('[IndicatorSelector] initIndicatorSelector called, readyState:', document.readyState);
+  const FAV_KEY = 'loom.indicators.favorites';
+  const TPL_KEY = 'loom.indicators.templates';
 
-    const selector = document.getElementById('indicator-selector');
-    const closeBtn = document.getElementById('close-selector');
-    const categoriesContainer = document.getElementById('indicator-categories');
+  let allIndicators: any[] = [];
+  const activeInstances = new Map<string, any>(); // instanceId -> instance
+  const hiddenInstances = new Set<string>();
+  const expandedSettings = new Set<string>();
 
-    console.log('[IndicatorSelector] Elements:', {
-      selector: !!selector,
-      closeBtn: !!closeBtn,
-      categoriesContainer: !!categoriesContainer,
+  function getFavorites(): string[] {
+    try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch { return []; }
+  }
+  function setFavorites(f: string[]) { localStorage.setItem(FAV_KEY, JSON.stringify(f)); }
+  function getTemplates(): any[] {
+    try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch { return []; }
+  }
+  function setTemplates(t: any[]) { localStorage.setItem(TPL_KEY, JSON.stringify(t)); }
+
+  function defaultParameters(indicator: any): Record<string, any> {
+    const params: Record<string, any> = {};
+    (indicator.parameters || []).forEach((p: any) => {
+      const t = p.param_type || {};
+      if (t.Integer) params[p.id] = t.Integer.default;
+      else if (t.Float) params[p.id] = t.Float.default;
+      else if (t.Boolean) params[p.id] = t.Boolean.default;
+      else if (p.default !== undefined) params[p.id ?? p.name] = p.default;
     });
-
-    if (!categoriesContainer) {
-      console.error('[IndicatorSelector] Categories container not found!');
-      return;
-    }
-
-    console.log('[IndicatorSelector] Waiting for WASM...');
-    await waitForWasm();
-    console.log('[IndicatorSelector] WASM ready');
-
-    console.log('[IndicatorSelector] Loading indicators...');
-    await loadIndicators(categoriesContainer);
-    console.log('[IndicatorSelector] Indicators loaded');
-
-    // Show/hide selector
-    window.addEventListener('show-indicator-selector', () => {
-      console.log('[IndicatorSelector] show-indicator-selector event received');
-      selector?.classList.remove('hidden');
-    });
-
-    closeBtn?.addEventListener('click', () => {
-      selector?.classList.add('hidden');
-    });
-
-    // Close on escape
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !selector?.classList.contains('hidden')) {
-        selector.classList.add('hidden');
-      }
-    });
+    return params;
   }
 
-  // Call init when DOM is ready
-  if (document.readyState === 'loading') {
-    console.log('[IndicatorSelector] Waiting for DOMContentLoaded...');
-    document.addEventListener('DOMContentLoaded', initIndicatorSelector);
-  } else {
-    console.log('[IndicatorSelector] Document already loaded, calling init immediately');
-    initIndicatorSelector();
-  }
-
-  // Track active indicators
-  const activeIndicators = new Set();
-
-  // Wait for RustChart to be available
-  async function waitForWasm() {
+  async function waitForWasm(): Promise<void> {
     return new Promise((resolve) => {
-      // Check if rustChart is already available
-      const rustChart = (window as any).rustChart;
-      if (rustChart?.wasmChart) {
-        console.log('[IndicatorSelector] RustChart already available');
-        resolve(rustChart.wasmChart);
-        return;
-      }
-
-      console.log('[IndicatorSelector] Waiting for rustChartReady event...');
-
-      // Listen for rustChartReady event
-      const handleReady = (e: Event) => {
-        const detail = (e as CustomEvent).detail;
-        if (detail?.rustChart?.wasmChart) {
-          console.log('[IndicatorSelector] RustChart ready via event');
-          window.removeEventListener('rustChartReady', handleReady);
-          resolve(detail.rustChart.wasmChart);
-        }
-      };
-
-      window.addEventListener('rustChartReady', handleReady);
-
-      // Fallback: poll in case event was already dispatched
-      const checkInterval = setInterval(() => {
-        const rustChart = (window as any).rustChart;
-        if (rustChart?.wasmChart) {
-          console.log('[IndicatorSelector] RustChart found via polling');
-          clearInterval(checkInterval);
-          window.removeEventListener('rustChartReady', handleReady);
-          resolve(rustChart.wasmChart);
-        }
+      if ((window as any).rustChart?.wasmChart) return resolve();
+      const onReady = () => { window.removeEventListener('rustChartReady', onReady); resolve(); };
+      window.addEventListener('rustChartReady', onReady);
+      const iv = setInterval(() => {
+        if ((window as any).rustChart?.wasmChart) { clearInterval(iv); resolve(); }
       }, 100);
     });
   }
 
-  // Load all indicators from WASM and populate UI
-  async function loadIndicators(container) {
+  async function loadIndicators() {
     try {
-      // Import the WASM module to access module-level functions
-      const wasmModule = await import('../../public/wasm/trading_ui.js');
-
-      // getAllIndicators is a module-level function, not a WasmChart method
-      if (typeof wasmModule.get_all_indicators !== 'function') {
-        console.error('[IndicatorSelector] get_all_indicators not found in WASM module');
-        return;
-      }
-
-      console.log('[IndicatorSelector] Calling get_all_indicators from WASM module');
-
-      // Get all indicators from WASM
-      const metadataJson = wasmModule.get_all_indicators();
-      const allIndicators = JSON.parse(metadataJson);
-
-      console.log('[IndicatorSelector] Loaded', allIndicators.length, 'indicators');
-
-      // Group by category
-      const byCategory = {};
-      allIndicators.forEach((indicator) => {
-        const category = indicator.category || 'Other';
-        if (!byCategory[category]) {
-          byCategory[category] = [];
-        }
-        byCategory[category].push(indicator);
-      });
-
-      // Sort categories and indicators alphabetically
-      const sortedCategories = Object.keys(byCategory).sort();
-
-      // Create category sections
-      sortedCategories.forEach((category) => {
-        const categoryDiv = document.createElement('div');
-        categoryDiv.className = 'category';
-
-        // Category header (collapsible)
-        const header = document.createElement('button');
-        header.className = 'category-header';
-        header.innerHTML = `
-          <span>${category}</span>
-          <span class="category-toggle">▶</span>
-        `;
-
-        // Category content
-        const content = document.createElement('div');
-        content.className = 'category-content';
-
-        // Sort indicators alphabetically
-        const indicators = byCategory[category].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        );
-
-        // Create indicator items
-        indicators.forEach((indicator) => {
-          const item = document.createElement('div');
-          item.className = 'indicator-item';
-          item.dataset.indicatorId = indicator.id;
-
-          item.innerHTML = `
-            <span class="indicator-name">${indicator.name}</span>
-            <div class="indicator-action"></div>
-          `;
-
-          // Click to add/remove
-          item.addEventListener('click', async () => {
-            const isActive = activeIndicators.has(indicator.id);
-
-            if (isActive) {
-              // Remove indicator
-              activeIndicators.delete(indicator.id);
-              item.classList.remove('active');
-              // TODO: Call remove function
-            } else {
-              // Add indicator
-              const config = {
-                id: indicator.id,
-                parameters: getDefaultParameters(indicator)
-              };
-
-              const instance = await addIndicatorToChart(config);
-              if (instance) {
-                activeIndicators.add(indicator.id);
-                item.classList.add('active');
-              }
-            }
-          });
-
-          content.appendChild(item);
-        });
-
-        // Toggle category
-        header.addEventListener('click', () => {
-          header.classList.toggle('expanded');
-          content.classList.toggle('expanded');
-        });
-
-        categoryDiv.appendChild(header);
-        categoryDiv.appendChild(content);
-        container.appendChild(categoryDiv);
-      });
-
-      console.log('[IndicatorSelector] Created', sortedCategories.length, 'categories');
-
-    } catch (error) {
-      console.error('Failed to load indicators:', error);
-      container.innerHTML = '<div style="padding: 20px; color: #ef4444;">Failed to load indicators</div>';
+      const wasmModule: any = await import('../../public/wasm/trading_ui.js');
+      if (typeof wasmModule.get_all_indicators !== 'function') return;
+      allIndicators = JSON.parse(wasmModule.get_all_indicators());
+    } catch (err) {
+      console.error('[IndicatorSelector] Failed to load indicators:', err);
     }
   }
 
-  // Helper to get default parameters
-  function getDefaultParameters(indicator) {
-    const params = {};
+  function indicatorById(id: string) { return allIndicators.find((i) => i.id === id); }
 
-    if (!indicator.parameters) return params;
+  // ---- Browse tab ----
+  function renderBrowse() {
+    const search = (document.getElementById('indicator-search') as HTMLInputElement)?.value
+      .trim().toLowerCase() || '';
+    const favs = getFavorites();
+    const container = document.getElementById('indicator-categories')!;
+    const favSection = document.getElementById('favorites-section')!;
+    const favList = document.getElementById('favorites-list')!;
+    const emptyMsg = document.getElementById('search-empty')!;
 
-    indicator.parameters.forEach((param) => {
-      const type = param.param_type;
-      if (type.Integer) {
-        params[param.id] = type.Integer.default;
-      } else if (type.Float) {
-        params[param.id] = type.Float.default;
-      } else if (type.Boolean) {
-        params[param.id] = type.Boolean.default;
+    const matches = allIndicators.filter((i) =>
+      !search || i.name.toLowerCase().includes(search) ||
+      (i.category || '').toLowerCase().includes(search));
+
+    // Favorites (hidden while searching to keep results flat)
+    const favMatches = matches.filter((i) => favs.includes(i.id));
+    if (!search && favMatches.length) {
+      favSection.hidden = false;
+      favList.innerHTML = '';
+      favMatches.forEach((i) => favList.appendChild(indicatorRow(i, favs)));
+    } else {
+      favSection.hidden = true;
+    }
+
+    container.innerHTML = '';
+    emptyMsg.hidden = matches.length > 0;
+
+    const byCategory: Record<string, any[]> = {};
+    matches.forEach((i) => {
+      const c = i.category || 'Other';
+      (byCategory[c] ||= []).push(i);
+    });
+
+    Object.keys(byCategory).sort().forEach((category) => {
+      const wrap = document.createElement('div');
+      const header = document.createElement('button');
+      header.className = 'category-header' + (search ? ' expanded' : '');
+      header.innerHTML = `<span>${category}</span><span class="category-toggle">▶</span>`;
+      const content = document.createElement('div');
+      content.className = 'category-content' + (search ? ' expanded' : '');
+      header.addEventListener('click', () => {
+        header.classList.toggle('expanded');
+        content.classList.toggle('expanded');
+      });
+      byCategory[category]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((i) => content.appendChild(indicatorRow(i, favs)));
+      wrap.appendChild(header);
+      wrap.appendChild(content);
+      container.appendChild(wrap);
+    });
+  }
+
+  function indicatorRow(indicator: any, favs: string[]): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'indicator-item';
+    const star = document.createElement('button');
+    star.className = 'ind-star' + (favs.includes(indicator.id) ? ' faved' : '');
+    star.textContent = '★';
+    star.title = 'Favorite';
+    star.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = getFavorites();
+      const idx = f.indexOf(indicator.id);
+      if (idx >= 0) f.splice(idx, 1); else f.push(indicator.id);
+      setFavorites(f);
+      renderBrowse();
+    });
+    const name = document.createElement('span');
+    name.className = 'indicator-name';
+    name.textContent = indicator.name;
+    const add = document.createElement('button');
+    add.className = 'ind-add';
+    add.textContent = '+';
+    add.title = 'Add instance';
+    const addHandler = async (e: Event) => {
+      e.stopPropagation();
+      await addInstance(indicator);
+    };
+    add.addEventListener('click', addHandler);
+    row.addEventListener('click', addHandler);
+    row.appendChild(star);
+    row.appendChild(name);
+    row.appendChild(add);
+    return row;
+  }
+
+  async function addInstance(indicator: any, parameters?: Record<string, any>) {
+    const config = { id: indicator.id, parameters: parameters || defaultParameters(indicator) };
+    const instance = await addIndicatorToChart(config as any);
+    if (instance) (window as any).showToast?.('success', `Added ${indicator.name}`, 1500);
+    return instance;
+  }
+
+  // ---- Active tab ----
+  function renderActive() {
+    const list = document.getElementById('active-list')!;
+    const empty = document.getElementById('active-empty')!;
+    const badge = document.getElementById('active-count')!;
+    list.innerHTML = '';
+    badge.textContent = String(activeInstances.size);
+    empty.hidden = activeInstances.size > 0;
+
+    activeInstances.forEach((instance, instanceId) => {
+      const meta = instance.metadata || {};
+      const colors = meta.defaultColors || instance.config?.colors || {};
+      const row = document.createElement('div');
+      row.className = 'active-row';
+
+      const head = document.createElement('div');
+      head.className = 'active-head';
+      const dot = document.createElement('span');
+      dot.className = 'active-dot';
+      dot.style.background = colors.line || colors.up || '#60a5fa';
+      const title = document.createElement('span');
+      title.className = 'active-title' + (hiddenInstances.has(instanceId) ? ' hidden-ind' : '');
+      title.textContent = meta.name || instance.config?.id || instanceId;
+
+      const settingsBtn = iconBtn('⚙', 'Inputs & Style', () => {
+        if (expandedSettings.has(instanceId)) expandedSettings.delete(instanceId);
+        else expandedSettings.add(instanceId);
+        renderActive();
+      });
+      const visBtn = iconBtn(hiddenInstances.has(instanceId) ? '◌' : '👁', 'Toggle visibility', () => {
+        if (hiddenInstances.has(instanceId)) hiddenInstances.delete(instanceId);
+        else hiddenInstances.add(instanceId);
+        window.dispatchEvent(new CustomEvent('indicator-visibility-changed', {
+          detail: { instanceId, visible: !hiddenInstances.has(instanceId) },
+        }));
+        renderActive();
+      });
+      const removeBtn = iconBtn('🗑', 'Remove', () => {
+        removeIndicatorFromChart(instanceId);
+      });
+      removeBtn.classList.add('danger');
+
+      head.append(dot, title, settingsBtn, visBtn, removeBtn);
+      row.appendChild(head);
+
+      if (expandedSettings.has(instanceId)) {
+        row.appendChild(buildSettings(instance, instanceId));
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function iconBtn(label: string, title: string, onClick: () => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = 'icon-btn';
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function buildSettings(instance: any, instanceId: string): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'active-settings';
+    const meta = instance.metadata || {};
+    const params = { ...(instance.config?.parameters || {}) };
+
+    (meta.parameters || []).forEach((p: any) => {
+      const t = p.param_type || {};
+      const key = p.id ?? p.name;
+      const row = document.createElement('div');
+      row.className = 'param-row';
+      const label = document.createElement('span');
+      label.textContent = p.name || key;
+      row.appendChild(label);
+
+      if (t.Boolean) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!params[key];
+        cb.addEventListener('change', () => applyParams(instance, instanceId, { ...params, [key]: cb.checked }));
+        row.appendChild(cb);
+      } else {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.value = String(params[key] ?? '');
+        if (t.Integer) { inp.step = '1'; inp.min = String(t.Integer.min ?? ''); inp.max = String(t.Integer.max ?? ''); }
+        if (t.Float) { inp.step = 'any'; }
+        inp.addEventListener('change', () => {
+          const v = t.Integer ? parseInt(inp.value, 10) : parseFloat(inp.value);
+          applyParams(instance, instanceId, { ...params, [key]: v });
+        });
+        row.appendChild(inp);
+      }
+      wrap.appendChild(row);
+    });
+
+    if (!(meta.parameters || []).length) {
+      const none = document.createElement('div');
+      none.className = 'param-row';
+      none.textContent = 'No configurable inputs.';
+      wrap.appendChild(none);
+    }
+
+    // Style: line color
+    const styleRow = document.createElement('div');
+    styleRow.className = 'param-row';
+    const styleLabel = document.createElement('span');
+    styleLabel.textContent = 'Line color';
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.value = instance.config?.colors?.line || '#60a5fa';
+    color.addEventListener('change', () => {
+      instance.config = instance.config || {};
+      instance.config.colors = { ...(instance.config.colors || {}), line: color.value };
+      window.dispatchEvent(new CustomEvent('indicator-style-changed', {
+        detail: { instanceId, colors: instance.config.colors },
+      }));
+      renderActive();
+    });
+    styleRow.append(styleLabel, color);
+    wrap.appendChild(styleRow);
+
+    return wrap;
+  }
+
+  function applyParams(instance: any, instanceId: string, parameters: Record<string, any>) {
+    instance.config = { ...(instance.config || {}), parameters };
+    updateIndicatorConfig(instanceId, instance.config);
+  }
+
+  // ---- Templates tab ----
+  function renderTemplates() {
+    const list = document.getElementById('template-list')!;
+    const empty = document.getElementById('template-empty')!;
+    const tpls = getTemplates();
+    list.innerHTML = '';
+    empty.hidden = tpls.length > 0;
+    tpls.forEach((tpl, idx) => {
+      const row = document.createElement('div');
+      row.className = 'template-row';
+      const name = document.createElement('span');
+      name.className = 'template-name';
+      name.textContent = tpl.name;
+      const meta = document.createElement('span');
+      meta.className = 'template-meta';
+      meta.textContent = `${tpl.indicators.length} ind.`;
+      const apply = iconBtn('↧', 'Apply template', async () => {
+        for (const ind of tpl.indicators) {
+          const def = indicatorById(ind.id);
+          if (def) await addInstance(def, ind.parameters);
+        }
+      });
+      const del = iconBtn('🗑', 'Delete template', () => {
+        const t = getTemplates();
+        t.splice(idx, 1);
+        setTemplates(t);
+        renderTemplates();
+      });
+      del.classList.add('danger');
+      row.append(name, meta, apply, del);
+      list.appendChild(row);
+    });
+  }
+
+  function saveTemplate() {
+    if (!activeInstances.size) {
+      (window as any).showToast?.('info', 'No active indicators to save', 2000);
+      return;
+    }
+    const name = prompt('Template name:');
+    if (!name) return;
+    const indicators = Array.from(activeInstances.values()).map((i) => ({
+      id: i.config?.id || i.metadata?.id,
+      parameters: i.config?.parameters || {},
+    }));
+    const tpls = getTemplates();
+    tpls.push({ name, indicators });
+    setTemplates(tpls);
+    renderTemplates();
+  }
+
+  // ---- Tabs ----
+  function switchTab(tab: string) {
+    document.querySelectorAll('.sel-tab').forEach((t) =>
+      t.classList.toggle('active', (t as HTMLElement).dataset.tab === tab));
+    ['browse', 'active', 'templates'].forEach((id) => {
+      const el = document.getElementById('tab-' + id)!;
+      el.hidden = id !== tab;
+    });
+    if (tab === 'active') renderActive();
+    if (tab === 'templates') renderTemplates();
+  }
+
+  async function init() {
+    const selector = document.getElementById('indicator-selector');
+    await waitForWasm();
+    await loadIndicators();
+
+    // Seed any already-active indicators.
+    getActiveIndicators().forEach((i: any) => activeInstances.set(i.instanceId, i));
+    renderBrowse();
+
+    document.getElementById('indicator-search')?.addEventListener('input', renderBrowse);
+    document.querySelectorAll('.sel-tab').forEach((t) =>
+      t.addEventListener('click', () => switchTab((t as HTMLElement).dataset.tab!)));
+    document.getElementById('save-template-btn')?.addEventListener('click', saveTemplate);
+
+    window.addEventListener('show-indicator-selector', () => {
+      selector?.classList.remove('hidden');
+      document.getElementById('indicator-search')?.focus();
+    });
+    document.getElementById('close-selector')?.addEventListener('click', () =>
+      selector?.classList.add('hidden'));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !selector?.classList.contains('hidden')) {
+        selector!.classList.add('hidden');
       }
     });
 
-    return params;
+    window.addEventListener('indicator-added', (e: any) => {
+      const inst = e.detail?.instance;
+      if (inst?.instanceId) {
+        activeInstances.set(inst.instanceId, inst);
+        renderActive();
+      }
+    });
+    window.addEventListener('indicator-removed', (e: any) => {
+      const id = e.detail?.instanceId;
+      if (id) {
+        activeInstances.delete(id);
+        hiddenInstances.delete(id);
+        expandedSettings.delete(id);
+        renderActive();
+      }
+    });
   }
 
-  // Listen for indicator events
-  window.addEventListener('indicator-added', (e) => {
-    const indicatorId = e.detail?.instance?.metadata?.id;
-    if (indicatorId) {
-      activeIndicators.add(indicatorId);
-      const item = document.querySelector(`[data-indicator-id="${indicatorId}"]`);
-      item?.classList.add('active');
-    }
-  });
-
-  window.addEventListener('indicator-removed', (e) => {
-    const indicatorId = e.detail?.instanceId;
-    if (indicatorId) {
-      activeIndicators.delete(indicatorId);
-      const item = document.querySelector(`[data-indicator-id="${indicatorId}"]`);
-      item?.classList.remove('active');
-    }
-  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 </script>
+</content>

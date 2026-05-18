@@ -8,7 +8,6 @@ import IndicatorSelector from '../components/IndicatorSelector.astro';
 import PanelManager from '../components/PanelManager.astro';
 import LayoutManager from '../components/LayoutManager.astro';
 import LayoutPresets from '../components/LayoutPresets.astro';
-import DrawingToolbar from '../components/DrawingToolbar.astro';
 import ChartAxis from '../components/ChartAxis.astro';
 import ChartPan from '../components/ChartPan.astro';
 import PanelContainer from '../components/PanelContainer.astro';
@@ -31,6 +30,10 @@ import FootprintOverlay from '../components/FootprintOverlay.astro';
 import MultiChartGrid from '../components/MultiChartGrid.astro';
 import SymbolCompare from '../components/SymbolCompare.astro';
 import VolumeProfile from '../components/VolumeProfile.astro';
+import BottomPanel from '../components/BottomPanel.astro';
+import ChartSettings from '../components/ChartSettings.astro';
+import WidgetBar from '../components/WidgetBar.astro';
+import ObjectTree from '../components/ObjectTree.astro';
 ---
 
 <Layout title="Loom - Trading UI">
@@ -64,7 +67,6 @@ import VolumeProfile from '../components/VolumeProfile.astro';
           <div id="main-chart" style="width:100%;height:100%"></div>
           <ChartAxis />
           <PanelContainer />
-          <DrawingToolbar />
           <ChartTooltip />
           <EntropyOverlay />
           <RegimeIndicator />
@@ -72,34 +74,12 @@ import VolumeProfile from '../components/VolumeProfile.astro';
           <ChartPan />
         </div>
 
-        <!-- Status bar: OHLCV at bottom of chart -->
-        <div id="chart-status-bar">
-          <template x-if="lastCandle">
-            <div class="status-ohlcv">
-              <span class="status-label">O</span><span x-text="lastCandle?.o?.toFixed(2)"></span>
-              <span class="status-label">H</span><span class="status-green" x-text="lastCandle?.h?.toFixed(2)"></span>
-              <span class="status-label">L</span><span class="status-red" x-text="lastCandle?.l?.toFixed(2)"></span>
-              <span class="status-label">C</span>
-              <span :class="lastCandle?.c >= lastCandle?.o ? 'status-green' : 'status-red'" x-text="lastCandle?.c?.toFixed(2)"></span>
-              <span class="status-label">Vol</span>
-              <span x-text="lastCandle?.v ? (lastCandle.v/1000).toFixed(1)+'k' : '—'"></span>
-              <span class="status-sep"></span>
-              <span class="status-label">Candles</span>
-              <span x-text="candleCount || 0"></span>
-            </div>
-          </template>
-          <!-- Live/test data buttons in status bar -->
-          <div class="status-actions" x-data>
-            <button @click="loadTestData()" :disabled="loading" class="status-btn">
-              <span x-show="!loading">Test Data</span><span x-show="loading">...</span>
-            </button>
-            <button @click="fetchCandles()" :disabled="loading" class="status-btn status-btn--primary">
-              <span x-show="!loading">Live</span><span x-show="loading">...</span>
-            </button>
-          </div>
-        </div>
+        <!-- Docked bottom workspace: status line + replay/time/logs tabs -->
+        <BottomPanel />
       </main>
     </div>
+
+    <WidgetBar />
 
     <!-- Modals & Overlays -->
     <IndicatorAlerts />
@@ -121,30 +101,9 @@ import VolumeProfile from '../components/VolumeProfile.astro';
     <MultiChartGrid />
     <SymbolCompare />
     <VolumeProfile />
+    <ChartSettings />
+    <ObjectTree />
   </div>
-
-  <style is:global>
-    #chart-status-bar {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      height: 28px; background: var(--surface); border-top: 1px solid var(--border);
-      display: flex; align-items: center; padding: 0 10px; gap: 0; z-index: 10;
-      font-size: 11px; font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    }
-    .status-ohlcv { display: flex; align-items: center; gap: 8px; flex: 1; }
-    .status-label { color: var(--muted); }
-    .status-green { color: var(--green); }
-    .status-red { color: var(--red); }
-    .status-sep { width: 1px; height: 14px; background: var(--border); margin: 0 4px; }
-    .status-actions { display: flex; gap: 6px; margin-left: auto; }
-    .status-btn {
-      padding: 2px 10px; border-radius: 3px; font-size: 11px; font-weight: 500;
-      color: var(--muted); background: transparent; border: 1px solid var(--border);
-      cursor: pointer; transition: all 0.15s;
-    }
-    .status-btn:hover { color: var(--text); border-color: var(--text); }
-    .status-btn--primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .status-btn--primary:hover { background: #5ea8ff; }
-  </style>
 
   <script is:inline>
     console.log('[Index] Script running');

@@ -1,9 +1,98 @@
 ---
-// Sidebar.astro — Drawing tools + chart navigation
+// Sidebar.astro — Consolidated drawing toolbar
+// Groups drawing tools into families with flyouts and exposes drawing controls
+// (magnet, stay-in-mode, lock, hide, remove) plus per-drawing style + templates.
+// This is the single canonical drawing tool entry point (DrawingToolbar.astro
+// is no longer rendered).
+
+interface ToolItem { tool: string; label: string; key?: string; }
+interface ToolFamily { id: string; title: string; icon: string; items: ToolItem[]; }
+
+const families: ToolFamily[] = [
+  {
+    id: 'cursor', title: 'Cursor', icon: 'cursor',
+    items: [
+      { tool: 'cursor', label: 'Cross', key: 'V' },
+      { tool: 'dot', label: 'Dot' },
+      { tool: 'arrow', label: 'Arrow' },
+    ],
+  },
+  {
+    id: 'lines', title: 'Lines & Channels', icon: 'trendline',
+    items: [
+      { tool: 'trendline', label: 'Trend Line', key: 'T' },
+      { tool: 'ray', label: 'Ray' },
+      { tool: 'extended', label: 'Extended Line' },
+      { tool: 'hline', label: 'Horizontal Line', key: 'H' },
+      { tool: 'hray', label: 'Horizontal Ray' },
+      { tool: 'vline', label: 'Vertical Line', key: 'L' },
+      { tool: 'channel', label: 'Parallel Channel' },
+      { tool: 'regression', label: 'Regression Trend' },
+    ],
+  },
+  {
+    id: 'fib', title: 'Fibonacci & Gann', icon: 'fib',
+    items: [
+      { tool: 'fib', label: 'Fib Retracement', key: 'F' },
+      { tool: 'fib-extension', label: 'Fib Extension' },
+      { tool: 'fib-timezone', label: 'Fib Time Zone' },
+      { tool: 'fib-fan', label: 'Fib Fan' },
+      { tool: 'gann-box', label: 'Gann Box' },
+      { tool: 'gann-fan', label: 'Gann Fan' },
+    ],
+  },
+  {
+    id: 'patterns', title: 'Patterns', icon: 'pattern',
+    items: [
+      { tool: 'xabcd', label: 'XABCD Pattern' },
+      { tool: 'abcd', label: 'ABCD Pattern' },
+      { tool: 'head-shoulders', label: 'Head & Shoulders' },
+      { tool: 'triangle-pattern', label: 'Triangle Pattern' },
+      { tool: 'three-drives', label: 'Three Drives' },
+    ],
+  },
+  {
+    id: 'shapes', title: 'Shapes', icon: 'rect',
+    items: [
+      { tool: 'rect', label: 'Rectangle', key: 'R' },
+      { tool: 'ellipse', label: 'Ellipse' },
+      { tool: 'triangle', label: 'Triangle' },
+      { tool: 'arrow-mark', label: 'Arrow Marker' },
+      { tool: 'brush', label: 'Brush' },
+    ],
+  },
+  {
+    id: 'text', title: 'Text & Annotation', icon: 'text',
+    items: [
+      { tool: 'text', label: 'Text' },
+      { tool: 'callout', label: 'Callout' },
+      { tool: 'note', label: 'Note' },
+      { tool: 'price-label', label: 'Price Label' },
+      { tool: 'flag', label: 'Flag Mark' },
+    ],
+  },
+  {
+    id: 'measure', title: 'Measure & Zoom', icon: 'measure',
+    items: [
+      { tool: 'measure', label: 'Measure' },
+      { tool: 'zoom-rect', label: 'Zoom In' },
+      { tool: 'forecast', label: 'Forecast' },
+    ],
+  },
+];
+
+const icons: Record<string, string> = {
+  cursor: '<path d="M5 3l14 9-7 1-4 7z"/>',
+  trendline: '<line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/>',
+  fib: '<line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="4" y1="16" x2="20" y2="16"/><line x1="4" y1="20" x2="20" y2="20"/>',
+  pattern: '<path d="M3 17l5-8 4 5 3-7 6 10"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+  text: '<path d="M5 5h14M12 5v14M9 19h6"/>',
+  measure: '<path d="M3 8h18M3 8v8M21 8v8M7 8v4M11 8v4M15 8v4M19 8v4"/>',
+};
 ---
 
 <aside id="loom-sidebar">
-  <!-- Logo mark (top) -->
   <div class="sb-logo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <path d="M3 3v16a2 2 0 002 2h16" stroke="#4e9cff" stroke-width="2.5" stroke-linecap="round"/>
@@ -11,58 +100,89 @@
     </svg>
   </div>
 
-  <!-- Drawing tool buttons -->
   <div class="sb-tools">
-    <div class="sb-section">
-      <button class="sb-btn active" title="Cursor (V)" data-tool="cursor" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-7 1-4 7z"/></svg>
-      </button>
-    </div>
+    {families.map((fam) => (
+      <div class="sb-family" data-family={fam.id}>
+        <button
+          class:list={["sb-btn", { active: fam.id === 'cursor' }]}
+          title={fam.title}
+          data-default-tool={fam.items[0].tool}
+          onclick="sbToggleFlyout(this)"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" set:html={icons[fam.icon]} />
+          {fam.items.length > 1 && <span class="sb-caret"></span>}
+        </button>
+        <div class="sb-flyout" role="menu">
+          <div class="sb-flyout-title">{fam.title}</div>
+          {fam.items.map((it) => (
+            <button class="sb-flyout-item" data-tool={it.tool} onclick="sbPickTool(this)">
+              <span>{it.label}</span>
+              {it.key && <kbd>{it.key}</kbd>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
 
-    <div class="sb-divider"></div>
+  <div class="sb-divider"></div>
 
-    <div class="sb-section">
-      <button class="sb-btn" title="Trend Line (T)" data-tool="trendline" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/>
-        </svg>
-      </button>
+  <!-- Drawing controls -->
+  <div class="sb-controls">
+    <button class="sb-ctl" data-ctl="magnet" title="Magnet mode — snap to OHLC" onclick="sbToggleCtl(this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 4v8a6 6 0 0012 0V4M6 4H3M6 4h3M18 4h-3M18 4h3"/>
+      </svg>
+    </button>
+    <button class="sb-ctl" data-ctl="stay" title="Stay in drawing mode" onclick="sbToggleCtl(this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 4v7a8 8 0 0016 0V4M14 8l3-3-3-3"/>
+      </svg>
+    </button>
+    <button class="sb-ctl" data-ctl="lock" title="Lock all drawings" onclick="sbToggleCtl(this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>
+      </svg>
+    </button>
+    <button class="sb-ctl" data-ctl="hide" title="Hide all drawings" onclick="sbToggleCtl(this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+    <button class="sb-btn" data-ctl="style" title="Drawing style & templates" onclick="sbToggleStyle(this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18 3 3 0 000-6 3 3 0 010-6z"/>
+      </svg>
+    </button>
+    <button class="sb-btn sb-btn--danger" title="Remove all drawings" onclick="sbRemoveAll()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6m5 0V4h4v2"/>
+      </svg>
+    </button>
+  </div>
 
-      <button class="sb-btn" title="Horizontal Line (H)" data-tool="hline" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3 2"/>
-        </svg>
-      </button>
-
-      <button class="sb-btn" title="Vertical Line (L)" data-tool="vline" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="3 2"/>
-        </svg>
-      </button>
-
-      <button class="sb-btn" title="Rectangle (R)" data-tool="rect" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="4" y="6" width="16" height="12" rx="1"/>
-        </svg>
-      </button>
-
-      <button class="sb-btn" title="Fibonacci (F)" data-tool="fib" onclick="setSidebarTool(this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="10" x2="20" y2="10"/>
-          <line x1="4" y1="16" x2="20" y2="16"/><line x1="4" y1="20" x2="20" y2="20"/>
-        </svg>
-      </button>
-    </div>
-
-    <div class="sb-divider"></div>
-
-    <div class="sb-section">
-      <button class="sb-btn sb-btn--danger" title="Delete selected" onclick="window.__loomChart?.clearTools()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6m5 0V4h4v2"/>
-        </svg>
-      </button>
-    </div>
+  <!-- Style & templates popover -->
+  <div id="sb-style-popover" class="sb-popover" hidden>
+    <div class="sb-pop-title">Default Drawing Style</div>
+    <label class="sb-row"><span>Color</span>
+      <input type="color" id="sb-style-color" value="#4e9cff" oninput="sbStyleChanged()" />
+    </label>
+    <label class="sb-row"><span>Width</span>
+      <input type="range" id="sb-style-width" min="1" max="6" value="2" oninput="sbStyleChanged()" />
+    </label>
+    <label class="sb-row"><span>Line</span>
+      <select id="sb-style-dash" onchange="sbStyleChanged()">
+        <option value="solid">Solid</option>
+        <option value="dashed">Dashed</option>
+        <option value="dotted">Dotted</option>
+      </select>
+    </label>
+    <label class="sb-row"><span>Fill</span>
+      <input type="checkbox" id="sb-style-fill" onchange="sbStyleChanged()" />
+    </label>
+    <div class="sb-pop-title" style="margin-top:8px">Templates</div>
+    <div id="sb-template-list" class="sb-template-list"></div>
+    <button class="sb-pop-btn" onclick="sbSaveTemplate()">Save current as template</button>
   </div>
 </aside>
 
@@ -84,26 +204,231 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.sb-tools { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; width: 100%; }
-.sb-section { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; padding: 0 4px; }
-.sb-divider { width: 28px; height: 1px; background: var(--border); margin: 4px 0; }
-.sb-btn {
+.sb-tools, .sb-controls { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; width: 100%; }
+.sb-divider { width: 28px; height: 1px; background: var(--border); margin: 2px 0; }
+.sb-family { position: relative; width: 100%; display: flex; justify-content: center; }
+.sb-btn, .sb-ctl {
   width: 36px; height: 36px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   color: var(--muted); background: transparent; border: none; cursor: pointer;
   transition: color 0.15s, background 0.15s;
   position: relative;
 }
-.sb-btn:hover { color: var(--text); background: rgba(255,255,255,0.08); }
-.sb-btn.active { color: var(--accent); background: var(--accent-dim); }
+.sb-btn:hover, .sb-ctl:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.sb-btn.active, .sb-ctl.active { color: var(--accent); background: var(--accent-dim); }
 .sb-btn--danger { color: var(--red) !important; opacity: 0.6; }
 .sb-btn--danger:hover { opacity: 1; background: rgba(248,81,73,0.15) !important; }
+.sb-caret {
+  position: absolute; right: 3px; bottom: 3px;
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-bottom: 4px solid currentColor;
+}
+.sb-flyout {
+  position: absolute; left: 44px; top: 0;
+  min-width: 190px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  display: none; z-index: 200;
+}
+.sb-family.open .sb-flyout { display: block; }
+.sb-flyout-title, .sb-pop-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--muted); padding: 4px 8px;
+}
+.sb-flyout-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 6px 8px; border-radius: 5px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text); font-size: 12px;
+}
+.sb-flyout-item:hover { background: var(--accent-dim); color: var(--accent); }
+.sb-flyout-item.active { color: var(--accent); }
+.sb-flyout-item kbd {
+  font-size: 10px; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 3px; padding: 0 4px;
+}
+.sb-popover {
+  position: absolute; left: 44px; bottom: 6px;
+  width: 200px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 200;
+}
+.sb-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--text); padding: 4px 6px;
+}
+.sb-row input[type=color] { width: 40px; height: 22px; border: none; background: none; }
+.sb-row select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+.sb-template-list { display: flex; flex-direction: column; gap: 2px; }
+.sb-template-item {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; padding: 4px 6px; border-radius: 4px; cursor: pointer; color: var(--text);
+}
+.sb-template-item:hover { background: var(--accent-dim); }
+.sb-template-item button { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; }
+.sb-pop-btn {
+  width: 100%; margin-top: 6px; padding: 5px;
+  background: var(--accent); color: #fff; border: none; border-radius: 5px;
+  font-size: 12px; cursor: pointer;
+}
+.sb-pop-btn:hover { background: #5ea8ff; }
 </style>
 
 <script is:inline>
-function setSidebarTool(btn) {
-  document.querySelectorAll('.sb-btn[data-tool]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  window.dispatchEvent(new CustomEvent('drawing-tool-changed', { detail: { tool: btn.dataset.tool } }));
-}
+(function () {
+  const STYLE_KEY = 'loom.drawing.style';
+  const TPL_KEY = 'loom.drawing.templates';
+
+  function closeAllFlyouts(except) {
+    document.querySelectorAll('.sb-family.open').forEach((f) => {
+      if (f !== except) f.classList.remove('open');
+    });
+    const pop = document.getElementById('sb-style-popover');
+    if (pop && except !== pop) pop.hidden = true;
+  }
+
+  window.sbToggleFlyout = function (btn) {
+    const fam = btn.closest('.sb-family');
+    const items = fam.querySelectorAll('.sb-flyout-item');
+    // Single-item families activate directly; multi-item families open a flyout.
+    if (items.length === 1) {
+      closeAllFlyouts();
+      window.sbActivateTool(items[0].dataset.tool);
+      return;
+    }
+    const willOpen = !fam.classList.contains('open');
+    closeAllFlyouts(willOpen ? fam : null);
+    fam.classList.toggle('open', willOpen);
+  };
+
+  window.sbPickTool = function (item) {
+    window.sbActivateTool(item.dataset.tool);
+    closeAllFlyouts();
+  };
+
+  window.sbActivateTool = function (tool) {
+    document.querySelectorAll('.sb-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.sb-flyout-item').forEach((b) => b.classList.remove('active'));
+    let famBtn = null;
+    document.querySelectorAll('.sb-family').forEach((fam) => {
+      const match = fam.querySelector('.sb-flyout-item[data-tool="' + tool + '"]');
+      if (match) {
+        match.classList.add('active');
+        famBtn = fam.querySelector('.sb-btn');
+      }
+    });
+    if (famBtn) famBtn.classList.add('active');
+    window.dispatchEvent(new CustomEvent('drawing-tool-changed', { detail: { tool } }));
+  };
+
+  window.sbToggleCtl = function (btn) {
+    const on = btn.classList.toggle('active');
+    const ctl = btn.dataset.ctl;
+    window.dispatchEvent(new CustomEvent('drawing-control-changed', { detail: { control: ctl, enabled: on } }));
+  };
+
+  window.sbToggleStyle = function (btn) {
+    const pop = document.getElementById('sb-style-popover');
+    const show = pop.hidden;
+    closeAllFlyouts(show ? pop : null);
+    pop.hidden = !show;
+    btn.classList.toggle('active', show);
+    if (show) renderTemplates();
+  };
+
+  function readStyle() {
+    return {
+      color: document.getElementById('sb-style-color').value,
+      width: Number(document.getElementById('sb-style-width').value),
+      dash: document.getElementById('sb-style-dash').value,
+      fill: document.getElementById('sb-style-fill').checked,
+    };
+  }
+
+  function applyStyle(s) {
+    document.getElementById('sb-style-color').value = s.color ?? '#4e9cff';
+    document.getElementById('sb-style-width').value = s.width ?? 2;
+    document.getElementById('sb-style-dash').value = s.dash ?? 'solid';
+    document.getElementById('sb-style-fill').checked = !!s.fill;
+  }
+
+  window.sbStyleChanged = function () {
+    const s = readStyle();
+    localStorage.setItem(STYLE_KEY, JSON.stringify(s));
+    window.dispatchEvent(new CustomEvent('drawing-style-changed', { detail: s }));
+  };
+
+  function getTemplates() {
+    try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch (_) { return []; }
+  }
+  function setTemplates(t) { localStorage.setItem(TPL_KEY, JSON.stringify(t)); }
+
+  function renderTemplates() {
+    const list = document.getElementById('sb-template-list');
+    const tpls = getTemplates();
+    if (!tpls.length) {
+      list.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px 6px">No templates yet</div>';
+      return;
+    }
+    list.innerHTML = '';
+    tpls.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'sb-template-item';
+      const name = document.createElement('span');
+      name.textContent = t.name;
+      name.onclick = () => { applyStyle(t.style); window.sbStyleChanged(); };
+      const del = document.createElement('button');
+      del.textContent = '×';
+      del.title = 'Delete template';
+      del.onclick = (e) => {
+        e.stopPropagation();
+        const next = getTemplates();
+        next.splice(i, 1);
+        setTemplates(next);
+        renderTemplates();
+      };
+      row.appendChild(name);
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  window.sbSaveTemplate = function () {
+    const name = prompt('Template name:');
+    if (!name) return;
+    const tpls = getTemplates();
+    tpls.push({ name, style: readStyle() });
+    setTemplates(tpls);
+    renderTemplates();
+  };
+
+  window.sbRemoveAll = function () {
+    if (!confirm('Remove all drawings from the chart?')) return;
+    window.__loomChart?.clearTools?.();
+    window.dispatchEvent(new CustomEvent('drawing-control-changed', { detail: { control: 'remove-all' } }));
+  };
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#loom-sidebar')) closeAllFlyouts();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const map = { v: 'cursor', t: 'trendline', h: 'hline', l: 'vline', r: 'rect', f: 'fib' };
+    const tool = map[e.key.toLowerCase()];
+    if (tool) window.sbActivateTool(tool);
+    if (e.key === 'Escape') { window.sbActivateTool('cursor'); closeAllFlyouts(); }
+  });
+
+  // Restore persisted default style on load.
+  try {
+    const saved = localStorage.getItem(STYLE_KEY);
+    if (saved) applyStyle(JSON.parse(saved));
+  } catch (_) {}
+})();
 </script>
+</content>
+</invoke>

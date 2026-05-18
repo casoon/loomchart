@@ -1,0 +1,394 @@
+---
+// ObjectTree.astro — Object Tree + Data Window.
+// The Object Tree lists everything currently applied to the chart
+// (drawings, indicators, overlays, alerts, compared symbols) with
+// per-object hide/show, configure, rename, and remove actions.
+// The Data Window shows OHLCV and active indicator values for the
+// candle under the cursor.
+---
+
+<div id="object-tree" class="ot-panel hidden">
+  <div class="ot-header">
+    <h3>Objects</h3>
+    <button id="ot-close" class="ot-x" title="Close">×</button>
+  </div>
+
+  <div class="ot-tabs">
+    <button class="ot-tab active" data-tab="tree">Object Tree</button>
+    <button class="ot-tab" data-tab="data">Data Window</button>
+  </div>
+
+  <div id="ot-tree" class="ot-body">
+    <div class="ot-group" data-group="indicators">
+      <div class="ot-group-head"><span>Indicators</span><span class="ot-count">0</span></div>
+      <div class="ot-list"></div>
+    </div>
+    <div class="ot-group" data-group="overlays">
+      <div class="ot-group-head"><span>Overlays</span><span class="ot-count">0</span></div>
+      <div class="ot-list"></div>
+    </div>
+    <div class="ot-group" data-group="drawings">
+      <div class="ot-group-head"><span>Drawings</span><span class="ot-count">0</span></div>
+      <div class="ot-list"></div>
+    </div>
+    <div class="ot-group" data-group="alerts">
+      <div class="ot-group-head"><span>Alerts</span><span class="ot-count">0</span></div>
+      <div class="ot-list"></div>
+    </div>
+    <div class="ot-group" data-group="symbols">
+      <div class="ot-group-head"><span>Compared Symbols</span><span class="ot-count">0</span></div>
+      <div class="ot-list"></div>
+    </div>
+  </div>
+
+  <div id="ot-data" class="ot-body" hidden>
+    <div class="ot-dw-section">
+      <div class="ot-dw-title">OHLCV</div>
+      <div id="ot-dw-ohlcv" class="ot-dw-rows">
+        <div class="ot-dw-empty">Hover over the chart to inspect a candle.</div>
+      </div>
+    </div>
+    <div class="ot-dw-section">
+      <div class="ot-dw-title">Indicators</div>
+      <div id="ot-dw-indicators" class="ot-dw-rows">
+        <div class="ot-dw-empty">No active indicators.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .ot-panel {
+    position: fixed; right: 60px; top: 64px; width: 300px;
+    max-height: calc(100vh - 100px);
+    display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 1900;
+  }
+  .ot-panel.hidden { display: none; }
+  .ot-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+  }
+  .ot-header h3 { margin: 0; font-size: 13px; color: var(--text); text-transform: uppercase; letter-spacing: 0.4px; }
+  .ot-x { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+  .ot-x:hover { color: var(--text); }
+
+  .ot-tabs { display: flex; padding: 6px 8px 0; gap: 2px; }
+  .ot-tab {
+    flex: 1; background: none; border: none; cursor: pointer;
+    padding: 7px 4px; font-size: 12px; color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .ot-tab:hover { color: var(--text); }
+  .ot-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .ot-body { flex: 1; overflow-y: auto; padding: 6px 0; }
+
+  .ot-group { border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .ot-group-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 14px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--muted);
+  }
+  .ot-count {
+    background: rgba(255,255,255,0.08); border-radius: 8px;
+    padding: 0 6px; font-size: 10px;
+  }
+  .ot-list { display: flex; flex-direction: column; }
+  .ot-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px 6px 22px; font-size: 12px; color: var(--text);
+    cursor: pointer;
+  }
+  .ot-row:hover { background: rgba(255,255,255,0.05); }
+  .ot-row.hidden-obj .ot-name { opacity: 0.4; text-decoration: line-through; }
+  .ot-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--accent); }
+  .ot-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ot-icon {
+    background: none; border: none; cursor: pointer; padding: 1px;
+    color: var(--muted); font-size: 12px;
+  }
+  .ot-icon:hover { color: var(--text); }
+  .ot-icon.danger:hover { color: var(--red); }
+  .ot-empty { padding: 6px 22px; font-size: 11px; color: var(--muted); }
+
+  .ot-dw-section { padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .ot-dw-title { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .ot-dw-rows { display: flex; flex-direction: column; gap: 3px; }
+  .ot-dw-row { display: flex; justify-content: space-between; font-size: 12px; }
+  .ot-dw-label { color: var(--muted); }
+  .ot-dw-value { color: var(--text); font-variant-numeric: tabular-nums; }
+  .ot-dw-empty { font-size: 11px; color: var(--muted); }
+</style>
+
+<script>
+  import {
+    getActiveIndicators,
+    removeIndicatorFromChart,
+  } from '../lib/indicators/chart-integration';
+
+  const panel = document.getElementById('object-tree')!;
+
+  type Obj = { id: string; name: string; group: string; visible: boolean; color?: string };
+  const objects = new Map<string, Obj>(); // key: group:id
+
+  const OVERLAY_LABELS: Record<string, string> = {
+    'toggle-vpvr': 'Volume Profile (VPVR)',
+    'toggle-vpsv': 'Session Profile (VPSV)',
+    'footprint-enable': 'Footprint / Delta',
+    'toggle-news-overlay': 'News & Events',
+    'toggle-entropy': 'Entropy Overlay',
+    'toggle-regime': 'Regime Indicator',
+  };
+
+  function key(group: string, id: string) { return `${group}:${id}`; }
+
+  function setCount(group: string, n: number) {
+    const head = panel.querySelector(`.ot-group[data-group="${group}"] .ot-count`);
+    if (head) head.textContent = String(n);
+  }
+
+  function renderGroup(group: string) {
+    const list = panel.querySelector(`.ot-group[data-group="${group}"] .ot-list`) as HTMLElement;
+    if (!list) return;
+    const items = [...objects.values()].filter((o) => o.group === group);
+    list.innerHTML = '';
+    setCount(group, items.length);
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'ot-empty';
+      empty.textContent = 'None';
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach((obj) => list.appendChild(objectRow(obj)));
+  }
+
+  function objectRow(obj: Obj): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'ot-row' + (obj.visible ? '' : ' hidden-obj');
+
+    const dot = document.createElement('span');
+    dot.className = 'ot-dot';
+    if (obj.color) dot.style.background = obj.color;
+
+    const name = document.createElement('span');
+    name.className = 'ot-name';
+    name.textContent = obj.name;
+
+    row.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.ot-icon')) return;
+      window.dispatchEvent(new CustomEvent('object-tree-select', {
+        detail: { group: obj.group, id: obj.id },
+      }));
+    });
+
+    const visBtn = icon(obj.visible ? '👁' : '◌', 'Show / hide', (e) => {
+      e.stopPropagation();
+      obj.visible = !obj.visible;
+      emitVisibility(obj);
+      renderGroup(obj.group);
+    });
+
+    const cfgBtn = icon('⚙', 'Configure', (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(new CustomEvent('object-tree-configure', {
+        detail: { group: obj.group, id: obj.id },
+      }));
+    });
+
+    const removeBtn = icon('🗑', 'Remove', (e) => {
+      e.stopPropagation();
+      removeObject(obj);
+    });
+    removeBtn.classList.add('danger');
+
+    row.append(dot, name);
+
+    // Rename only where it makes sense (drawings, compared symbols, alerts).
+    if (obj.group === 'drawings' || obj.group === 'symbols' || obj.group === 'alerts') {
+      const renameBtn = icon('✎', 'Rename', (e) => {
+        e.stopPropagation();
+        const next = prompt('Rename object:', obj.name);
+        if (next && next.trim()) {
+          obj.name = next.trim();
+          window.dispatchEvent(new CustomEvent('object-tree-rename', {
+            detail: { group: obj.group, id: obj.id, name: obj.name },
+          }));
+          renderGroup(obj.group);
+        }
+      });
+      row.appendChild(renameBtn);
+    }
+    row.append(cfgBtn, visBtn, removeBtn);
+    return row;
+  }
+
+  function icon(label: string, title: string, onClick: (e: Event) => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = 'ot-icon';
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function emitVisibility(obj: Obj) {
+    if (obj.group === 'indicators') {
+      window.dispatchEvent(new CustomEvent('indicator-visibility-changed', {
+        detail: { instanceId: obj.id, visible: obj.visible },
+      }));
+    } else {
+      window.dispatchEvent(new CustomEvent('object-tree-visibility', {
+        detail: { group: obj.group, id: obj.id, visible: obj.visible },
+      }));
+    }
+  }
+
+  function removeObject(obj: Obj) {
+    if (obj.group === 'indicators') {
+      removeIndicatorFromChart(obj.id);
+    } else if (obj.group === 'overlays') {
+      window.dispatchEvent(new Event(obj.id)); // toggling the overlay off
+      objects.delete(key(obj.group, obj.id));
+      renderGroup(obj.group);
+    } else {
+      window.dispatchEvent(new CustomEvent('object-tree-remove', {
+        detail: { group: obj.group, id: obj.id },
+      }));
+      objects.delete(key(obj.group, obj.id));
+      renderGroup(obj.group);
+    }
+  }
+
+  function upsert(obj: Obj) {
+    objects.set(key(obj.group, obj.id), obj);
+    renderGroup(obj.group);
+  }
+  function remove(group: string, id: string) {
+    objects.delete(key(group, id));
+    renderGroup(group);
+  }
+
+  // ---- Indicators (live from chart-integration) ----
+  function refreshIndicators() {
+    [...objects.values()]
+      .filter((o) => o.group === 'indicators')
+      .forEach((o) => objects.delete(key('indicators', o.id)));
+    getActiveIndicators().forEach((inst: any) => {
+      objects.set(key('indicators', inst.instanceId), {
+        id: inst.instanceId,
+        name: inst.metadata?.name || inst.config?.id || inst.instanceId,
+        group: 'indicators',
+        visible: true,
+        color: inst.metadata?.defaultColors?.line,
+      });
+    });
+    renderGroup('indicators');
+    renderDataWindow();
+  }
+
+  window.addEventListener('indicator-added', refreshIndicators);
+  window.addEventListener('indicator-removed', refreshIndicators);
+
+  // ---- Overlays (tracked from their toggle events) ----
+  Object.keys(OVERLAY_LABELS).forEach((evt) => {
+    window.addEventListener(evt, () => {
+      const k = key('overlays', evt);
+      if (objects.has(k)) objects.delete(k);
+      else objects.set(k, { id: evt, name: OVERLAY_LABELS[evt], group: 'overlays', visible: true });
+      renderGroup('overlays');
+    });
+  });
+
+  // ---- Generic registry for drawings / alerts / compared symbols ----
+  // Other components register objects via these events.
+  window.addEventListener('object-tree-register', (e: any) => {
+    const d = e.detail;
+    if (d?.group && d?.id) {
+      upsert({ id: d.id, name: d.name || d.id, group: d.group, visible: d.visible ?? true, color: d.color });
+    }
+  });
+  window.addEventListener('object-tree-unregister', (e: any) => {
+    const d = e.detail;
+    if (d?.group && d?.id) remove(d.group, d.id);
+  });
+
+  // ---- Data Window ----
+  let hoverCandle: any = null;
+
+  function fmt(v: any): string {
+    return typeof v === 'number' ? v.toFixed(2) : '—';
+  }
+
+  function renderDataWindow() {
+    const ohlcvEl = document.getElementById('ot-dw-ohlcv')!;
+    if (hoverCandle) {
+      const c = hoverCandle;
+      const rows: [string, any][] = [
+        ['Open', c.open ?? c.o],
+        ['High', c.high ?? c.h],
+        ['Low', c.low ?? c.l],
+        ['Close', c.close ?? c.c],
+        ['Volume', c.volume ?? c.v],
+      ];
+      ohlcvEl.innerHTML = '';
+      rows.forEach(([label, val]) => {
+        const row = document.createElement('div');
+        row.className = 'ot-dw-row';
+        row.innerHTML = `<span class="ot-dw-label">${label}</span><span class="ot-dw-value">${fmt(val)}</span>`;
+        ohlcvEl.appendChild(row);
+      });
+    } else {
+      ohlcvEl.innerHTML = '<div class="ot-dw-empty">Hover over the chart to inspect a candle.</div>';
+    }
+
+    const indEl = document.getElementById('ot-dw-indicators')!;
+    const indicators = getActiveIndicators();
+    if (!indicators.length) {
+      indEl.innerHTML = '<div class="ot-dw-empty">No active indicators.</div>';
+      return;
+    }
+    indEl.innerHTML = '';
+    indicators.forEach((inst: any) => {
+      const row = document.createElement('div');
+      row.className = 'ot-dw-row';
+      const name = inst.metadata?.name || inst.config?.id || inst.instanceId;
+      let value = inst.lastValue;
+      if (value && typeof value === 'object') value = value.value ?? value.line ?? null;
+      row.innerHTML = `<span class="ot-dw-label">${name}</span><span class="ot-dw-value">${fmt(value)}</span>`;
+      indEl.appendChild(row);
+    });
+  }
+
+  window.addEventListener('chart-candle-hover', (e: any) => {
+    hoverCandle = e.detail || null;
+    renderDataWindow();
+  });
+
+  // ---- Tabs & open/close ----
+  panel.querySelectorAll('.ot-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const name = (tab as HTMLElement).dataset.tab;
+      panel.querySelectorAll('.ot-tab').forEach((t) => t.classList.toggle('active', t === tab));
+      document.getElementById('ot-tree')!.hidden = name !== 'tree';
+      document.getElementById('ot-data')!.hidden = name !== 'data';
+      if (name === 'data') renderDataWindow();
+    });
+  });
+
+  document.getElementById('ot-close')?.addEventListener('click', () => panel.classList.add('hidden'));
+  window.addEventListener('toggle-object-tree', () => {
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      refreshIndicators();
+      ['overlays', 'drawings', 'alerts', 'symbols'].forEach(renderGroup);
+    }
+  });
+
+  // Initial render.
+  ['indicators', 'overlays', 'drawings', 'alerts', 'symbols'].forEach(renderGroup);
+</script>
+</content>

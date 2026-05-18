@@ -1,0 +1,327 @@
+---
+// BottomPanel.astro — Docked bottom workspace
+// Always-visible compact status line + collapsible tabbed panel for replay,
+// time/range controls, and notification logs. Strategy/Trading tabs are
+// reserved for future editor and broker workflows.
+---
+
+<div id="bottom-panel" class="bottom-panel" data-collapsed="true">
+  <!-- Collapsible tab content (above the strip) -->
+  <div class="bp-content">
+    <!-- Replay -->
+    <div class="bp-pane" data-pane="replay">
+      <div class="bp-group">
+        <button class="bp-btn" data-replay="start" title="Jump to start">⏮</button>
+        <button class="bp-btn" data-replay="step-back" title="Step back">◀</button>
+        <button class="bp-btn bp-btn--primary" data-replay="play" title="Play / Pause">▶</button>
+        <button class="bp-btn" data-replay="step" title="Step forward">▶|</button>
+        <button class="bp-btn" data-replay="end" title="Jump to end">⏭</button>
+      </div>
+      <div class="bp-group">
+        <label class="bp-label">Speed</label>
+        <select id="bp-replay-speed" class="bp-select">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+        </select>
+      </div>
+      <input id="bp-replay-progress" class="bp-progress" type="range" min="0" max="100" value="100" />
+      <span id="bp-replay-state" class="bp-muted">Idle</span>
+    </div>
+
+    <!-- Time & Range -->
+    <div class="bp-pane" data-pane="time" hidden>
+      <div class="bp-group">
+        <label class="bp-label">Range</label>
+        {['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', 'All'].map((r) => (
+          <button class="bp-chip" data-range={r}>{r}</button>
+        ))}
+      </div>
+      <div class="bp-group">
+        <label class="bp-label">Timezone</label>
+        <select id="bp-timezone" class="bp-select">
+          <option value="UTC">UTC</option>
+          <option value="Europe/Berlin">Europe/Berlin</option>
+          <option value="America/New_York">New York</option>
+          <option value="America/Chicago">Chicago</option>
+          <option value="Asia/Tokyo">Tokyo</option>
+          <option value="Asia/Shanghai">Shanghai</option>
+          <option value="local">Local</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="bp-pane" data-pane="logs" hidden>
+      <div class="bp-logs-head">
+        <span class="bp-muted">Notifications & logs</span>
+        <button id="bp-logs-clear" class="bp-link">Clear</button>
+      </div>
+      <div id="bp-logs-list" class="bp-logs-list">
+        <div class="bp-muted bp-logs-empty">No log entries yet.</div>
+      </div>
+    </div>
+
+    <!-- Reserved future tabs -->
+    <div class="bp-pane bp-pane--soon" data-pane="strategy" hidden>
+      <span class="bp-muted">Strategy &amp; Pine-style editor — coming soon.</span>
+    </div>
+    <div class="bp-pane bp-pane--soon" data-pane="trading" hidden>
+      <span class="bp-muted">Broker &amp; trading panel — coming soon.</span>
+    </div>
+  </div>
+
+  <!-- Always-visible status strip -->
+  <div class="bp-strip">
+    <div class="bp-ohlcv">
+      <template x-if="lastCandle">
+        <div class="status-ohlcv">
+          <span class="status-label">O</span><span x-text="lastCandle?.o?.toFixed(2)"></span>
+          <span class="status-label">H</span><span class="status-green" x-text="lastCandle?.h?.toFixed(2)"></span>
+          <span class="status-label">L</span><span class="status-red" x-text="lastCandle?.l?.toFixed(2)"></span>
+          <span class="status-label">C</span>
+          <span :class="lastCandle?.c >= lastCandle?.o ? 'status-green' : 'status-red'" x-text="lastCandle?.c?.toFixed(2)"></span>
+          <span class="status-label">Vol</span>
+          <span x-text="lastCandle?.v ? (lastCandle.v/1000).toFixed(1)+'k' : '—'"></span>
+          <span class="status-sep"></span>
+          <span class="status-label">Candles</span>
+          <span x-text="candleCount || 0"></span>
+        </div>
+      </template>
+    </div>
+
+    <div class="bp-tabs">
+      <button class="bp-tab" data-tab="replay">Replay</button>
+      <button class="bp-tab" data-tab="time">Time &amp; Range</button>
+      <button class="bp-tab" data-tab="logs">Logs <span id="bp-log-badge" class="bp-badge" hidden>0</span></button>
+      <button class="bp-tab" data-tab="strategy">Strategy</button>
+      <button class="bp-tab" data-tab="trading">Trading</button>
+    </div>
+
+    <div class="bp-actions">
+      <button @click="loadTestData()" :disabled="loading" class="status-btn">
+        <span x-show="!loading">Test Data</span><span x-show="loading">...</span>
+      </button>
+      <button @click="fetchCandles()" :disabled="loading" class="status-btn status-btn--primary">
+        <span x-show="!loading">Live</span><span x-show="loading">...</span>
+      </button>
+      <button id="bp-collapse" class="bp-caret" title="Expand / collapse panel">▴</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .bottom-panel {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    background: var(--surface); border-top: 1px solid var(--border);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+  .bp-content {
+    height: 168px; overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    transition: height 0.18s ease;
+  }
+  .bottom-panel[data-collapsed="true"] .bp-content { height: 0; border-bottom: none; }
+  .bottom-panel[data-collapsed="true"] .bp-caret { transform: rotate(180deg); }
+
+  .bp-pane { padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .bp-pane--soon { padding: 24px; justify-content: center; }
+  .bp-group { display: flex; align-items: center; gap: 6px; }
+  .bp-label { font-size: 11px; color: var(--muted); }
+  .bp-muted { font-size: 11px; color: var(--muted); }
+
+  .bp-btn {
+    min-width: 30px; height: 28px; padding: 0 8px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); cursor: pointer; font-size: 12px;
+  }
+  .bp-btn:hover { border-color: var(--accent); }
+  .bp-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .bp-select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; font-size: 12px; padding: 4px 6px;
+  }
+  .bp-progress { flex: 1; min-width: 120px; accent-color: var(--accent); }
+  .bp-chip {
+    padding: 3px 9px; border-radius: 4px; font-size: 11px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer;
+  }
+  .bp-chip:hover, .bp-chip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+  .bp-logs-head { display: flex; justify-content: space-between; width: 100%; }
+  .bp-link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; }
+  .bp-logs-list { width: 100%; max-height: 116px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+  .bp-logs-empty { padding: 8px 0; }
+  .bp-log-row { display: flex; gap: 8px; font-size: 11px; }
+  .bp-log-time { color: var(--muted); flex-shrink: 0; }
+  .bp-log-row[data-level="error"] .bp-log-msg { color: var(--red); }
+  .bp-log-row[data-level="success"] .bp-log-msg { color: var(--green); }
+  .bp-log-msg { color: var(--text); }
+
+  .bp-strip {
+    height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  }
+  .bp-ohlcv { flex: 1; min-width: 0; overflow: hidden; }
+  .status-ohlcv { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .status-label { color: var(--muted); }
+  .status-green { color: var(--green); }
+  .status-red { color: var(--red); }
+  .status-sep { width: 1px; height: 14px; background: var(--border); margin: 0 4px; }
+
+  .bp-tabs { display: flex; gap: 2px; }
+  .bp-tab {
+    background: none; border: none; cursor: pointer;
+    padding: 5px 10px; font-size: 11px; color: var(--muted);
+    border-radius: 4px;
+  }
+  .bp-tab:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+  .bp-tab.active { color: var(--accent); background: var(--accent-dim); }
+  .bp-badge {
+    background: var(--accent); color: #fff; border-radius: 8px;
+    padding: 0 5px; font-size: 9px;
+  }
+
+  .bp-actions { display: flex; align-items: center; gap: 6px; }
+  .status-btn {
+    padding: 2px 10px; border-radius: 3px; font-size: 11px; font-weight: 500;
+    color: var(--muted); background: transparent; border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .status-btn:hover { color: var(--text); border-color: var(--text); }
+  .status-btn--primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .status-btn--primary:hover { background: #5ea8ff; }
+  .bp-caret {
+    width: 24px; height: 24px; background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 12px; transition: transform 0.18s;
+  }
+  .bp-caret:hover { color: var(--text); }
+</style>
+
+<script is:inline>
+(function () {
+  const panel = document.getElementById('bottom-panel');
+  if (!panel) return;
+
+  const tabs = panel.querySelectorAll('.bp-tab');
+  const panes = panel.querySelectorAll('.bp-pane');
+
+  function showPane(name) {
+    panes.forEach((p) => { p.hidden = p.dataset.pane !== name; });
+    tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  }
+
+  function setCollapsed(collapsed) {
+    panel.dataset.collapsed = String(collapsed);
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const name = tab.dataset.tab;
+      const isCollapsed = panel.dataset.collapsed === 'true';
+      if (isCollapsed || !tab.classList.contains('active')) {
+        showPane(name);
+        setCollapsed(false);
+      } else {
+        setCollapsed(true);
+      }
+    });
+  });
+
+  document.getElementById('bp-collapse')?.addEventListener('click', () => {
+    setCollapsed(panel.dataset.collapsed !== 'true');
+  });
+
+  showPane('replay');
+
+  // ---- Replay controls ----
+  let playing = false;
+  const stateEl = document.getElementById('bp-replay-state');
+  const speedEl = document.getElementById('bp-replay-speed');
+  const progressEl = document.getElementById('bp-replay-progress');
+
+  panel.querySelectorAll('[data-replay]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.replay;
+      if (action === 'play') {
+        playing = !playing;
+        btn.textContent = playing ? '⏸' : '▶';
+        if (stateEl) stateEl.textContent = playing ? 'Playing' : 'Paused';
+      }
+      window.dispatchEvent(new CustomEvent('replay-control', {
+        detail: { action, speed: Number(speedEl?.value || 1) },
+      }));
+    });
+  });
+  speedEl?.addEventListener('change', () => {
+    window.dispatchEvent(new CustomEvent('replay-control', {
+      detail: { action: 'speed', speed: Number(speedEl.value) },
+    }));
+  });
+  progressEl?.addEventListener('input', () => {
+    window.dispatchEvent(new CustomEvent('replay-control', {
+      detail: { action: 'seek', position: Number(progressEl.value) },
+    }));
+  });
+
+  // ---- Time & Range ----
+  panel.querySelectorAll('.bp-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      panel.querySelectorAll('.bp-chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      window.dispatchEvent(new CustomEvent('chart-set-range', { detail: { range: chip.dataset.range } }));
+    });
+  });
+  const tzEl = document.getElementById('bp-timezone');
+  try {
+    const savedTz = localStorage.getItem('loom.chart.timezone');
+    if (savedTz && tzEl) tzEl.value = savedTz;
+  } catch (_) {}
+  tzEl?.addEventListener('change', () => {
+    localStorage.setItem('loom.chart.timezone', tzEl.value);
+    window.dispatchEvent(new CustomEvent('chart-set-timezone', { detail: { timezone: tzEl.value } }));
+  });
+
+  // ---- Logs ----
+  const logsList = document.getElementById('bp-logs-list');
+  const logBadge = document.getElementById('bp-log-badge');
+  let logCount = 0;
+
+  function addLog(level, message) {
+    if (!logsList) return;
+    const empty = logsList.querySelector('.bp-logs-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'bp-log-row';
+    row.dataset.level = level || 'info';
+    const time = document.createElement('span');
+    time.className = 'bp-log-time';
+    time.textContent = new Date().toLocaleTimeString();
+    const msg = document.createElement('span');
+    msg.className = 'bp-log-msg';
+    msg.textContent = message;
+    row.append(time, msg);
+    logsList.prepend(row);
+    while (logsList.children.length > 200) logsList.lastChild.remove();
+    logCount++;
+    if (logBadge) { logBadge.hidden = false; logBadge.textContent = String(logCount); }
+  }
+
+  document.getElementById('bp-logs-clear')?.addEventListener('click', () => {
+    if (logsList) logsList.innerHTML = '<div class="bp-muted bp-logs-empty">No log entries yet.</div>';
+    logCount = 0;
+    if (logBadge) logBadge.hidden = true;
+  });
+
+  // Capture toast notifications and explicit log events into the log area.
+  window.addEventListener('app-toast', (e) => {
+    if (e.detail) addLog(e.detail.type, e.detail.message);
+  });
+  window.addEventListener('app-log', (e) => {
+    if (e.detail) addLog(e.detail.level, e.detail.message);
+  });
+})();
+</script>
+</content>

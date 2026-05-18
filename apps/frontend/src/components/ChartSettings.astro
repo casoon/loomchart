@@ -1,0 +1,299 @@
+---
+// ChartSettings.astro — TradingView-style centralized chart settings.
+// Sections: Symbol/Series, Status line, Scales & lines, Canvas, Volume.
+// Settings persist to localStorage and apply to the WASM renderer where the
+// engine exposes setters, otherwise via CSS theme tokens + a broadcast event.
+---
+
+<div id="chart-settings" class="cs-overlay hidden">
+  <div class="cs-dialog">
+    <div class="cs-header">
+      <h2>Chart Settings</h2>
+      <button id="cs-close" class="cs-x" title="Close">×</button>
+    </div>
+
+    <div class="cs-body">
+      <nav class="cs-nav">
+        <button class="cs-nav-item active" data-section="series">Symbol &amp; Series</button>
+        <button class="cs-nav-item" data-section="status">Status Line</button>
+        <button class="cs-nav-item" data-section="scales">Scales &amp; Lines</button>
+        <button class="cs-nav-item" data-section="canvas">Canvas</button>
+        <button class="cs-nav-item" data-section="volume">Volume</button>
+      </nav>
+
+      <div class="cs-sections">
+        <section class="cs-section" data-section="series">
+          <label class="cs-row"><span>Series type</span>
+            <select data-key="candleStyle">
+              <option value="candlestick">Candlestick</option>
+              <option value="ohlc">OHLC Bars</option>
+              <option value="hollow">Hollow Candles</option>
+              <option value="line">Line</option>
+              <option value="area">Area</option>
+            </select>
+          </label>
+          <label class="cs-row"><span>Up color</span>
+            <input type="color" data-key="upColor" />
+          </label>
+          <label class="cs-row"><span>Down color</span>
+            <input type="color" data-key="downColor" />
+          </label>
+          <label class="cs-row"><span>Show wicks</span>
+            <input type="checkbox" data-key="wickVisible" />
+          </label>
+          <label class="cs-row"><span>Show borders</span>
+            <input type="checkbox" data-key="borderVisible" />
+          </label>
+        </section>
+
+        <section class="cs-section" data-section="status" hidden>
+          <label class="cs-row"><span>Show OHLC values</span>
+            <input type="checkbox" data-key="showOHLC" />
+          </label>
+          <label class="cs-row"><span>Show volume value</span>
+            <input type="checkbox" data-key="showStatusVolume" />
+          </label>
+          <label class="cs-row"><span>Show symbol &amp; interval</span>
+            <input type="checkbox" data-key="showSymbol" />
+          </label>
+        </section>
+
+        <section class="cs-section" data-section="scales" hidden>
+          <label class="cs-row"><span>Show grid</span>
+            <input type="checkbox" data-key="gridVisible" />
+          </label>
+          <label class="cs-row"><span>Grid color</span>
+            <input type="color" data-key="gridColor" />
+          </label>
+          <label class="cs-row"><span>Axis text color</span>
+            <input type="color" data-key="axisTextColor" />
+          </label>
+          <label class="cs-row"><span>Scale labels</span>
+            <input type="checkbox" data-key="scaleLabels" />
+          </label>
+        </section>
+
+        <section class="cs-section" data-section="canvas" hidden>
+          <label class="cs-row"><span>Theme</span>
+            <select data-key="theme">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+          <label class="cs-row"><span>Background</span>
+            <input type="color" data-key="background" />
+          </label>
+          <label class="cs-row"><span>Show crosshair</span>
+            <input type="checkbox" data-key="crosshairVisible" />
+          </label>
+          <label class="cs-row"><span>Crosshair color</span>
+            <input type="color" data-key="crosshairColor" />
+          </label>
+        </section>
+
+        <section class="cs-section" data-section="volume" hidden>
+          <label class="cs-row"><span>Show volume</span>
+            <input type="checkbox" data-key="volumeVisible" />
+          </label>
+          <label class="cs-row"><span>Volume up color</span>
+            <input type="color" data-key="volumeUpColor" />
+          </label>
+          <label class="cs-row"><span>Volume down color</span>
+            <input type="color" data-key="volumeDownColor" />
+          </label>
+        </section>
+      </div>
+    </div>
+
+    <div class="cs-footer">
+      <button id="cs-reset" class="cs-btn">Reset to defaults</button>
+      <button id="cs-done" class="cs-btn cs-btn--primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .cs-overlay {
+    position: fixed; inset: 0; z-index: 2100;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6);
+  }
+  .cs-overlay.hidden { display: none; }
+  .cs-dialog {
+    width: 540px; max-width: 92vw; max-height: 82vh;
+    display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .cs-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .cs-header h2 { margin: 0; font-size: 15px; color: var(--text); }
+  .cs-x {
+    background: none; border: none; color: var(--muted);
+    font-size: 22px; cursor: pointer; line-height: 1;
+  }
+  .cs-x:hover { color: var(--text); }
+  .cs-body { display: flex; flex: 1; overflow: hidden; }
+  .cs-nav {
+    width: 150px; flex-shrink: 0; padding: 10px 6px;
+    border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px;
+  }
+  .cs-nav-item {
+    text-align: left; padding: 8px 10px; border-radius: 6px;
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 12px;
+  }
+  .cs-nav-item:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .cs-nav-item.active { color: var(--accent); background: var(--accent-dim); }
+  .cs-sections { flex: 1; overflow-y: auto; padding: 14px 18px; }
+  .cs-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; font-size: 13px; color: var(--text);
+  }
+  .cs-row select {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 13px;
+  }
+  .cs-row input[type=color] { width: 44px; height: 26px; border: none; background: none; cursor: pointer; }
+  .cs-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .cs-footer {
+    display: flex; justify-content: space-between;
+    padding: 12px 18px; border-top: 1px solid var(--border);
+  }
+  .cs-btn {
+    padding: 7px 14px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  }
+  .cs-btn:hover { border-color: var(--accent); }
+  .cs-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+</style>
+
+<script is:inline>
+(function () {
+  const KEY = 'loom.chart.settings';
+  const DEFAULTS = {
+    candleStyle: 'candlestick',
+    upColor: '#26a69a',
+    downColor: '#ef5350',
+    wickVisible: true,
+    borderVisible: true,
+    showOHLC: true,
+    showStatusVolume: true,
+    showSymbol: true,
+    gridVisible: true,
+    gridColor: '#2a2e39',
+    axisTextColor: '#9598a1',
+    scaleLabels: true,
+    theme: 'dark',
+    background: '#0b0f17',
+    crosshairVisible: true,
+    crosshairColor: '#758696',
+    volumeVisible: true,
+    volumeUpColor: '#26a69a',
+    volumeDownColor: '#ef5350',
+  };
+
+  const overlay = document.getElementById('chart-settings');
+  if (!overlay) return;
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS };
+    } catch (_) { return { ...DEFAULTS }; }
+  }
+  let settings = load();
+
+  function fields() { return overlay.querySelectorAll('[data-key]'); }
+
+  function syncToForm() {
+    fields().forEach((el) => {
+      const key = el.dataset.key;
+      if (el.type === 'checkbox') el.checked = !!settings[key];
+      else el.value = settings[key];
+    });
+  }
+
+  function readForm() {
+    fields().forEach((el) => {
+      const key = el.dataset.key;
+      settings[key] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+  }
+
+  function getChart() {
+    return window.rustChart || window.getWasm?.() || window.__loomChart || null;
+  }
+
+  function apply() {
+    localStorage.setItem(KEY, JSON.stringify(settings));
+
+    // CSS theme tokens — picked up by DOM overlays and token-driven rendering.
+    const root = document.documentElement;
+    root.style.setProperty('--candle-up', settings.upColor);
+    root.style.setProperty('--candle-down', settings.downColor);
+    root.style.setProperty('--grid-color', settings.gridColor);
+    root.style.setProperty('--chart-bg', settings.background);
+    root.style.setProperty('--axis-text', settings.axisTextColor);
+    root.style.setProperty('--crosshair-color', settings.crosshairColor);
+
+    // WASM renderer — call setters that the engine exposes; ignore the rest.
+    const chart = getChart();
+    if (chart) {
+      try { chart.setTheme?.(settings.theme === 'dark'); } catch (_) {}
+      try { chart.setCandleStyle?.(settings.candleStyle); } catch (_) {}
+      try { chart.setCandleColors?.(settings.upColor, settings.downColor); } catch (_) {}
+      try { chart.setGridVisible?.(settings.gridVisible); } catch (_) {}
+      try { chart.setGridColor?.(settings.gridColor); } catch (_) {}
+      try { chart.setBackgroundColor?.(settings.background); } catch (_) {}
+      try { chart.setCrosshairVisible?.(settings.crosshairVisible); } catch (_) {}
+      try { chart.setVolumeVisible?.(settings.volumeVisible); } catch (_) {}
+    }
+
+    // Broadcast for components that render their own layers.
+    window.dispatchEvent(new CustomEvent('chart-settings-changed', { detail: { ...settings } }));
+  }
+
+  fields().forEach((el) => {
+    el.addEventListener('change', () => { readForm(); apply(); });
+  });
+
+  overlay.querySelectorAll('.cs-nav-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const sec = item.dataset.section;
+      overlay.querySelectorAll('.cs-nav-item').forEach((n) =>
+        n.classList.toggle('active', n === item));
+      overlay.querySelectorAll('.cs-section').forEach((s) => {
+        s.hidden = s.dataset.section !== sec;
+      });
+    });
+  });
+
+  function open() { syncToForm(); overlay.classList.remove('hidden'); }
+  function close() { overlay.classList.add('hidden'); }
+
+  document.getElementById('cs-close')?.addEventListener('click', close);
+  document.getElementById('cs-done')?.addEventListener('click', close);
+  document.getElementById('cs-reset')?.addEventListener('click', () => {
+    settings = { ...DEFAULTS };
+    syncToForm();
+    apply();
+  });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close();
+  });
+
+  window.addEventListener('open-chart-settings', open);
+
+  // Apply persisted settings once the chart is ready.
+  function applyWhenReady() {
+    if (getChart()) { apply(); return; }
+    window.addEventListener('rustChartReady', () => apply(), { once: true });
+  }
+  applyWhenReady();
+})();
+</script>
+</content>

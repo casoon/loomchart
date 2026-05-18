@@ -597,6 +597,13 @@
       renderPluginList();
     });
 
+    // Toggle trigger (from the right widget bar)
+    window.addEventListener('toggle-plugin-manager', () => {
+      const willShow = manager.classList.contains('hidden');
+      manager.classList.toggle('hidden', !willShow);
+      if (willShow) renderPluginList();
+    });
+
     renderPluginList();
   });
 })();

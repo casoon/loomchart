@@ -30,6 +30,22 @@
 
     <!-- Content -->
     <div class="flex-1 overflow-y-auto px-6 py-4">
+      <!-- Current layout indicator -->
+      <div class="mb-4 flex items-center justify-between bg-background border border-border rounded-md px-3 py-2">
+        <div class="text-sm">
+          <span class="text-muted-foreground">Current layout:</span>
+          <span class="text-foreground font-medium ml-1" x-text="currentLayoutName || 'Unsaved'"></span>
+          <span x-show="dirty" class="text-yellow-500 ml-1" title="Unsaved changes">●</span>
+        </div>
+        <button
+          @click="resetLayout()"
+          class="px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors"
+          title="Reset to default layout"
+        >
+          Reset
+        </button>
+      </div>
+
       <!-- Save Current Layout -->
       <div class="mb-6">
         <h3 class="text-sm font-semibold text-foreground mb-3">Save Current Layout</h3>
@@ -97,6 +113,24 @@
                     Load
                   </button>
 
+                  <!-- Rename Button -->
+                  <button
+                    @click="renameLayout(layout)"
+                    class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-xs font-medium hover:bg-secondary/80 transition-colors"
+                    title="Rename layout"
+                  >
+                    Rename
+                  </button>
+
+                  <!-- Duplicate Button -->
+                  <button
+                    @click="duplicateLayout(layout)"
+                    class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-xs font-medium hover:bg-secondary/80 transition-colors"
+                    title="Duplicate layout"
+                  >
+                    Duplicate
+                  </button>
+
                   <!-- Export Button -->
                   <button
                     @click="exportLayout(layout)"
@@ -122,6 +156,24 @@
                 </div>
               </div>
             </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Multi-chart sync options -->
+      <div class="mt-6 pt-6 border-t border-border">
+        <h3 class="text-sm font-semibold text-foreground mb-3">Multi-Chart Sync</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <template x-for="opt in syncOptions" :key="opt.key">
+            <label class="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                x-model="sync[opt.key]"
+                @change="saveSync()"
+                class="accent-primary"
+              />
+              <span x-text="opt.label"></span>
+            </label>
           </template>
         </div>
       </div>
@@ -163,10 +215,23 @@
   import { needsMigration, getLayoutVersion, CURRENT_LAYOUT_VERSION } from '../lib/layout-migration';
   import Alpine from 'alpinejs';
 
+  const CURRENT_KEY = 'loom.layout.current';
+  const SYNC_KEY = 'loom.multichart.sync';
+
   function layoutManager() {
     return {
       layouts: [] as SavedLayout[],
       newLayoutName: '',
+      currentLayoutId: '' as string,
+      currentLayoutName: '' as string,
+      dirty: false,
+      syncOptions: [
+        { key: 'symbol', label: 'Symbol' },
+        { key: 'interval', label: 'Interval' },
+        { key: 'crosshair', label: 'Crosshair' },
+        { key: 'drawings', label: 'Drawings' },
+      ],
+      sync: { symbol: true, interval: true, crosshair: false, drawings: false } as Record<string, boolean>,
 
       async init() {
         // Initialize IndexedDB first
@@ -175,7 +240,41 @@
         } catch (err) {
           console.error('Failed to initialize IndexedDB:', err);
         }
+        this.restoreCurrent();
+        this.restoreSync();
         await this.refreshLayouts();
+        // Any panel change marks the current layout as having unsaved changes.
+        window.addEventListener('panel-layout-changed', () => { this.dirty = true; });
+      },
+
+      restoreCurrent() {
+        try {
+          const raw = localStorage.getItem(CURRENT_KEY);
+          if (raw) {
+            const c = JSON.parse(raw);
+            this.currentLayoutId = c.id || '';
+            this.currentLayoutName = c.name || '';
+          }
+        } catch {}
+      },
+
+      setCurrent(id: string, name: string) {
+        this.currentLayoutId = id;
+        this.currentLayoutName = name;
+        this.dirty = false;
+        localStorage.setItem(CURRENT_KEY, JSON.stringify({ id, name }));
+      },
+
+      restoreSync() {
+        try {
+          const raw = localStorage.getItem(SYNC_KEY);
+          if (raw) this.sync = { ...this.sync, ...JSON.parse(raw) };
+        } catch {}
+      },
+
+      saveSync() {
+        localStorage.setItem(SYNC_KEY, JSON.stringify(this.sync));
+        window.dispatchEvent(new CustomEvent('multichart-sync-changed', { detail: { ...this.sync } }));
       },
 
       async refreshLayouts() {
@@ -196,9 +295,10 @@
           }
 
           const layoutJson = await wasm.get_panel_layout();
-          await layoutStorage.saveLayout(this.newLayoutName, layoutJson, false);
+          const id = await layoutStorage.saveLayout(this.newLayoutName, layoutJson, false);
 
           (window as any).showToast?.('success', `Layout "${this.newLayoutName}" saved`);
+          this.setCurrent(id, this.newLayoutName);
           this.newLayoutName = '';
           await this.refreshLayouts();
         } catch (err) {
@@ -223,6 +323,7 @@
           await (window as any).refreshPanels?.();
 
           (window as any).showToast?.('success', `Layout "${saved.name}" loaded`);
+          this.setCurrent(saved.id, saved.name);
           this.close();
         } catch (err) {
           console.error('Failed to load layout:', err);
@@ -237,6 +338,53 @@
         } catch (err) {
           console.error('Failed to export layout:', err);
           (window as any).showToast?.('error', 'Failed to export layout');
+        }
+      },
+
+      async renameLayout(layout: SavedLayout) {
+        const name = prompt('Rename layout:', layout.name);
+        if (!name || name.trim() === layout.name) return;
+        try {
+          await layoutStorage.renameLayout(layout.id, name.trim());
+          if (this.currentLayoutId === layout.id) {
+            this.setCurrent(layout.id, name.trim());
+          }
+          (window as any).showToast?.('success', 'Layout renamed');
+          await this.refreshLayouts();
+        } catch (err) {
+          console.error('Failed to rename layout:', err);
+          (window as any).showToast?.('error', 'Failed to rename layout');
+        }
+      },
+
+      async duplicateLayout(layout: SavedLayout) {
+        try {
+          await layoutStorage.saveLayout(`${layout.name} copy`, layout.layout, false);
+          (window as any).showToast?.('success', `Duplicated "${layout.name}"`);
+          await this.refreshLayouts();
+        } catch (err) {
+          console.error('Failed to duplicate layout:', err);
+          (window as any).showToast?.('error', 'Failed to duplicate layout');
+        }
+      },
+
+      async resetLayout() {
+        if (!confirm('Reset the chart to the default layout?')) return;
+        try {
+          const wasm = (window as any).getWasm?.();
+          if (!wasm) throw new Error('WASM not initialized');
+          const def = await layoutStorage.loadDefaultLayout();
+          if (def) {
+            await wasm.restore_panel_layout(def.layout);
+          } else if (typeof wasm.reset_panel_layout === 'function') {
+            await wasm.reset_panel_layout();
+          }
+          await (window as any).refreshPanels?.();
+          this.setCurrent('', '');
+          (window as any).showToast?.('success', 'Layout reset to default');
+        } catch (err) {
+          console.error('Failed to reset layout:', err);
+          (window as any).showToast?.('error', 'Failed to reset layout');
         }
       },
 

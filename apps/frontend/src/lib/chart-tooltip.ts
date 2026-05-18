@@ -171,6 +171,11 @@ export class ChartTooltipHandler {
     this.elements.volume.textContent =
       volK >= 1 ? `${volK.toFixed(1)}k` : candle.volume.toFixed(2);
 
+    // Broadcast the hovered candle so the Data Window can mirror it.
+    window.dispatchEvent(
+      new CustomEvent("chart-candle-hover", { detail: candle }),
+    );
+
     // Position tooltip
     this.positionTooltip(mouseX, mouseY);
   }

@@ -235,6 +235,35 @@ class LayoutStorage {
   }
 
   /**
+   * Rename an existing layout
+   */
+  async renameLayout(id: string, name: string): Promise<void> {
+    if (!this.db) {
+      throw new Error("IndexedDB not initialized");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const getReq = store.get(id);
+
+      getReq.onsuccess = () => {
+        const saved = getReq.result as SavedLayout | undefined;
+        if (!saved) {
+          reject(new Error("Layout not found"));
+          return;
+        }
+        saved.name = name;
+        const putReq = store.put(saved);
+        putReq.onsuccess = () => resolve();
+        putReq.onerror = () => reject(putReq.error);
+      };
+
+      getReq.onerror = () => reject(getReq.error);
+    });
+  }
+
+  /**
    * Delete layout by ID
    */
   async deleteLayout(id: string): Promise<void> {

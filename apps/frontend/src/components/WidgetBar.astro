@@ -1,0 +1,80 @@
+---
+// WidgetBar.astro — Persistent right-side widget rail.
+// Provides a consistent navigation model for Watchlist, Alerts, News,
+// Object Tree, and Plugins. Each entry toggles its existing overlay
+// component via the event that component already listens for.
+
+interface Widget { id: string; label: string; event: string; icon: string; }
+
+const widgets: Widget[] = [
+  {
+    id: 'watchlist', label: 'Watchlist', event: 'toggle-watchlist',
+    icon: '<path d="M4 6h16M4 10h16M4 14h10M4 18h10"/>',
+  },
+  {
+    id: 'alerts', label: 'Alerts', event: 'toggle-price-alerts',
+    icon: '<path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>',
+  },
+  {
+    id: 'news', label: 'News', event: 'toggle-news-overlay',
+    icon: '<path d="M4 4h13v16H6a2 2 0 01-2-2zM17 8h3v10a2 2 0 01-2 2M8 8h5M8 12h5M8 16h5"/>',
+  },
+  {
+    id: 'objects', label: 'Object Tree', event: 'toggle-object-tree',
+    icon: '<path d="M3 5h7v5H3zM14 4h7v6h-7zM14 14h7v6h-7zM7 10v6h7M7 16"/>',
+  },
+  {
+    id: 'plugins', label: 'Plugins', event: 'toggle-plugin-manager',
+    icon: '<path d="M14 7h3a2 2 0 012 2v3M14 7V5a2 2 0 00-2-2 2 2 0 00-2 2v2H7a2 2 0 00-2 2v3h2a2 2 0 010 4H5v3a2 2 0 002 2h3v-2a2 2 0 014 0v2h3a2 2 0 002-2v-3"/>',
+  },
+];
+---
+
+<aside id="widget-bar">
+  {widgets.map((w) => (
+    <button class="wb-btn" data-widget={w.id} data-event={w.event} title={w.label}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" set:html={w.icon} />
+      <span class="wb-label">{w.label}</span>
+    </button>
+  ))}
+</aside>
+
+<style>
+  #widget-bar {
+    width: 48px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0;
+    flex-shrink: 0;
+    z-index: 50;
+  }
+  .wb-btn {
+    width: 40px; height: 48px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
+    background: transparent; border: none; border-radius: 6px;
+    color: var(--muted); cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .wb-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+  .wb-btn.active { color: var(--accent); background: var(--accent-dim); }
+  .wb-label { font-size: 8px; letter-spacing: 0.2px; }
+</style>
+
+<script is:inline>
+(function () {
+  const bar = document.getElementById('widget-bar');
+  if (!bar) return;
+  bar.querySelectorAll('.wb-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      window.dispatchEvent(new Event(btn.dataset.event));
+    });
+  });
+})();
+</script>
+</content>

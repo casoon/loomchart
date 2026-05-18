@@ -704,6 +704,27 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this.drawingMode = null;
           this._trendStart = null;
           this.onDrawingPlaced = null;
+          // Re-entrancy guard: WASM chart state must never be entered while
+          // an earlier WASM call on the same object is still on the stack.
+          this._inWasm = false;
+          this._pendingResize = null;
+          this._resizeObserver = null;
+        }
+
+        // Run a WASM call behind the re-entrancy guard. Calls attempted while
+        // another WASM call is in flight are skipped rather than panicking
+        // Rust with "recursive use of an object" aliasing errors.
+        _wasm(fn) {
+          if (!this.chart || this._inWasm) return undefined;
+          this._inWasm = true;
+          try {
+            return fn(this.chart);
+          } catch (err) {
+            console.error("[chart] WASM call failed:", err);
+            return undefined;
+          } finally {
+            this._inWasm = false;
+          }
         }
 
         async init(timeframe) {
@@ -737,16 +758,23 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this._bindEvents();
           this._startLoop();
 
-          // Sync size once layout settles
-          requestAnimationFrame(() => {
-            if (this.chart) {
-              this.chart.resize(this.container.clientWidth, this.container.clientHeight);
-            }
-          });
+          // Sync size once layout settles — applied by the render loop, never
+          // synchronously, so resize cannot re-enter a borrowed chart.
+          requestAnimationFrame(() => this._queueResize());
 
-          new ResizeObserver(() => {
-            if (this.chart) this.chart.resize(this.container.clientWidth, this.container.clientHeight);
-          }).observe(this.container);
+          // Replace any observer from a previous chart instance so resize
+          // callbacks do not pile up across timeframe switches.
+          if (this._resizeObserver) this._resizeObserver.disconnect();
+          this._resizeObserver = new ResizeObserver(() => this._queueResize());
+          this._resizeObserver.observe(this.container);
+        }
+
+        _queueResize() {
+          if (!this.chart) return;
+          this._pendingResize = {
+            w: this.container.clientWidth,
+            h: this.container.clientHeight,
+          };
         }
 
         _coords(e) {
@@ -755,11 +783,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
         }
 
         _crosshairInfo(x, y) {
-          if (!this.chart) return null;
-          this.chart.onMouseMove(x, y);
-          const raw = this.chart.getCrosshairInfo?.();
-          if (!raw) return null;
-          return typeof raw === "string" ? JSON.parse(raw) : raw;
+          return this._wasm((c) => {
+            c.onMouseMove(x, y);
+            const raw = c.getCrosshairInfo?.();
+            if (!raw) return null;
+            return typeof raw === "string" ? JSON.parse(raw) : raw;
+          }) ?? null;
         }
 
         _handleDrawClick(x, y) {
@@ -769,11 +798,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const time  = info.time;
 
           if (this.drawingMode === "hline" && price != null) {
-            this.chart.createHorizontalLine(`hl-${++this._toolCount}`, price);
+            this._wasm((c) => c.createHorizontalLine(`hl-${++this._toolCount}`, price));
             this.onDrawingPlaced?.("done");
 
           } else if (this.drawingMode === "vline" && time != null) {
-            this.chart.createVerticalLine(`vl-${++this._toolCount}`, BigInt(time));
+            this._wasm((c) => c.createVerticalLine(`vl-${++this._toolCount}`, BigInt(time)));
             this.onDrawingPlaced?.("done");
 
           } else if (this.drawingMode === "trendline") {
@@ -781,11 +810,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
               this._trendStart = { time, price };
               this.onDrawingPlaced?.("trendline-step1");
             } else {
-              this.chart.createTrendLine(
+              this._wasm((c) => c.createTrendLine(
                 `tl-${++this._toolCount}`,
                 BigInt(this._trendStart.time), this._trendStart.price,
                 BigInt(time), price
-              );
+              ));
               this._trendStart = null;
               this.onDrawingPlaced?.("done");
             }
@@ -798,38 +827,42 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         _bindEvents() {
           const el = this.canvas;
-          const c  = this.chart;
 
           el.addEventListener("mousemove", (e) => {
             const {x,y} = this._coords(e);
-            c.onMouseMove(x, y);
-            if (this.onCrosshair) this.onCrosshair(c.getCrosshairInfo?.());
+            const info = this._wasm((c) => {
+              c.onMouseMove(x, y);
+              return c.getCrosshairInfo?.();
+            });
+            if (this.onCrosshair) this.onCrosshair(info);
           });
           el.addEventListener("mouseleave", () => {
-            c.onMouseLeave?.();
+            this._wasm((c) => c.onMouseLeave?.());
             this.onCrosshair?.(null);
           });
           el.addEventListener("mousedown", (e) => {
             const {x,y} = this._coords(e);
             if (this.drawingMode) { this._handleDrawClick(x, y); return; }
-            c.onMouseDown(x, y, e.button);
+            this._wasm((c) => c.onMouseDown(x, y, e.button));
           });
           el.addEventListener("mouseup", (e) => {
             if (this.drawingMode) return;
             const {x,y} = this._coords(e);
-            c.onMouseUp(x, y, e.button);
+            this._wasm((c) => c.onMouseUp(x, y, e.button));
           });
           el.addEventListener("wheel", (e) => {
             e.preventDefault();
             const {x,y} = this._coords(e);
-            c.onMouseWheel(x, y, e.deltaY);
+            this._wasm((c) => c.onMouseWheel(x, y, e.deltaY));
           }, { passive:false });
-          el.addEventListener("dblclick", () => { if (!this.drawingMode) c.fitToData?.(); });
+          el.addEventListener("dblclick", () => {
+            if (!this.drawingMode) this._wasm((c) => c.fitToData?.());
+          });
 
           el.addEventListener("touchstart", (e) => {
             if (e.touches.length === 1) {
               const t=e.touches[0], r=el.getBoundingClientRect();
-              c.onTouchStart?.(t.clientX-r.left, t.clientY-r.top);
+              this._wasm((c) => c.onTouchStart?.(t.clientX-r.left, t.clientY-r.top));
               this._touchDist = null;
             } else if (e.touches.length === 2) {
               const dx=e.touches[0].clientX-e.touches[1].clientX;
@@ -840,7 +873,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           el.addEventListener("touchmove", (e) => {
             if (e.touches.length === 1) {
               const t=e.touches[0], r=el.getBoundingClientRect();
-              c.onTouchMove?.(t.clientX-r.left, t.clientY-r.top);
+              this._wasm((c) => c.onTouchMove?.(t.clientX-r.left, t.clientY-r.top));
             } else if (e.touches.length===2 && this._touchDist) {
               const dx=e.touches[0].clientX-e.touches[1].clientX;
               const dy=e.touches[0].clientY-e.touches[1].clientY;
@@ -848,17 +881,36 @@ const lastCandleJson = JSON.stringify(lastCandle);
               const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
               const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
               const r=el.getBoundingClientRect();
-              c.onMouseWheel?.(mx-r.left, my-r.top, (this._touchDist-nd)*2);
+              this._wasm((c) => c.onMouseWheel?.(mx-r.left, my-r.top, (this._touchDist-nd)*2));
               this._touchDist = nd;
             }
           }, { passive:true });
-          el.addEventListener("touchend", () => { c.onTouchEnd?.(); this._touchDist=null; });
+          el.addEventListener("touchend", () => {
+            this._wasm((c) => c.onTouchEnd?.());
+            this._touchDist=null;
+          });
         }
 
         _startLoop() {
           const loop = () => {
+            if (this.chart && !this._inWasm) {
+              // Resize (if queued) and render share a single guarded span so
+              // the chart is never re-entered mid-borrow.
+              this._inWasm = true;
+              try {
+                if (this._pendingResize) {
+                  const { w, h } = this._pendingResize;
+                  this._pendingResize = null;
+                  if (w > 0 && h > 0) this.chart.resize(w, h);
+                }
+                this.chart.render();
+              } catch (err) {
+                console.error("[chart] render loop failed:", err);
+              } finally {
+                this._inWasm = false;
+              }
+            }
             if (this.chart) {
-              this.chart.render();
               const anyOverlay = this.showVolumeProfile || this.vpMode === "vpsv"
                               || this.showStrategy || this.showNews
                               || this.showDivergence || this.showPatterns
@@ -1410,8 +1462,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
         }
         getCachedCandles()   { return this._candleCache || []; }
         getViewportInfo()    {
-          if (!this.chart) return null;
-          const info = this.chart.getViewportInfo();
+          const info = this._wasm((c) => c.getViewportInfo());
           if (!info) return null;
           return typeof info === "string" ? JSON.parse(info) : info;
         }
