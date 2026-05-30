@@ -419,10 +419,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
               x-on:click="toggleStrategy()"
               x-on:dblclick.prevent="openIndicatorSettings('strategy')"
               x-bind:class="showStrategy ? 'active' : ''"
-              title="Strategy overlay (S) — SMA crossover entry/exit markers">
+              title="Strategy overlay (S) — double-click for settings">
         <span>▲▼</span>
         <span>Strategy</span>
-        <span class="btn btn-ghost" x-show="showStrategy" x-on:click.stop="openIndicatorSettings('strategy')" title="Strategy settings">⚙</span>
       </button>
 
       <!-- Divergence detection -->
@@ -430,10 +429,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
               x-on:click="toggleDivergence()"
               x-on:dblclick.prevent="openIndicatorSettings('divergence')"
               x-bind:class="showDivergence ? 'active' : ''"
-              title="Divergence detection (D) — RSI vs. price divergences">
+              title="Divergence detection (D) — double-click for settings">
         <span>↗↘</span>
         <span>Div</span>
-        <span class="btn btn-ghost" x-show="showDivergence" x-on:click.stop="openIndicatorSettings('divergence')" title="Divergence settings">⚙</span>
       </button>
 
       <!-- Patterns -->
@@ -441,10 +439,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
               x-on:click="togglePatterns()"
               x-on:dblclick.prevent="openIndicatorSettings('patterns')"
               x-bind:class="showPatterns ? 'active' : ''"
-              title="Chart patterns (P) — double top / double bottom detection">
+              title="Chart patterns (P) — double-click for settings">
         <span>⋂⋃</span>
         <span>Patterns</span>
-        <span class="btn btn-ghost" x-show="showPatterns" x-on:click.stop="openIndicatorSettings('patterns')" title="Pattern settings">⚙</span>
       </button>
 
       <!-- MTF indicator -->
@@ -452,9 +449,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
               x-on:click="toggleMTF()"
               x-on:dblclick.prevent="openIndicatorSettings('mtf')"
               x-bind:class="showMTF ? 'active' : ''"
-              title="Multi-timeframe SMA (M) — SMA20 from one timeframe higher">
+              title="Multi-timeframe SMA (M) — double-click for settings">
         <span>MTF</span>
-        <span class="btn btn-ghost" x-show="showMTF" x-on:click.stop="openIndicatorSettings('mtf')" title="MTF settings">⚙</span>
       </button>
 
       <div class="seg-group" title="Oscillator panes">
@@ -1351,6 +1347,36 @@ const lastCandleJson = JSON.stringify(lastCandle);
           ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
         }
 
+        getPaneLayout() {
+          const raw = this._wasm((c) => c.getPaneLayout?.());
+          if (!raw) return [{ id: "main", heightFraction: 1 }];
+          try {
+            return typeof raw === "string" ? JSON.parse(raw) : raw;
+          } catch (_) {
+            return [{ id: "main", heightFraction: 1 }];
+          }
+        }
+
+        _mainChartHeight(vp) {
+          const layout = this.getPaneLayout();
+          const main = layout.find((pane) => pane.id === "main");
+          const fraction = Number(main?.heightFraction);
+          return vp.dimensions.height * (Number.isFinite(fraction) ? fraction : 1);
+        }
+
+        _withMainPane(ctx, vp, draw) {
+          const mainH = this._mainChartHeight(vp);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, vp.dimensions.width, mainH);
+          ctx.clip();
+          try {
+            draw(mainH);
+          } finally {
+            ctx.restore();
+          }
+        }
+
         _drawVolumeProfile() {
           const vp = this.getViewportInfo();
           const candles = this.getCachedCandles();
@@ -1364,58 +1390,60 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const vp = this.getViewportInfo();
           if (!vp || !this.overlayCanvas || !candles?.length) return;
           const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-          const NUM_BINS = 28;
-          const pMin = vp.price.min, pMax = vp.price.max;
-          const binSize = (pMax - pMin) / NUM_BINS;
-          if (binSize <= 0) return;
-          const bins = new Array(NUM_BINS).fill(0);
+          this._withMainPane(ctx, vp, (H) => {
+            const NUM_BINS = 28;
+            const pMin = vp.price.min, pMax = vp.price.max;
+            const binSize = (pMax - pMin) / NUM_BINS;
+            if (binSize <= 0) return;
+            const bins = new Array(NUM_BINS).fill(0);
 
-          for (const c of candles) {
-            const lowBin  = Math.max(0, Math.floor((c.l - pMin) / binSize));
-            const highBin = Math.min(NUM_BINS - 1, Math.floor((c.h - pMin) / binSize));
-            if (highBin < 0 || lowBin >= NUM_BINS) continue;
-            const span = Math.max(1, highBin - lowBin + 1);
-            const per = (c.v || 1) / span;
-            for (let i = lowBin; i <= highBin; i++) bins[i] += per;
-          }
+            for (const c of candles) {
+              const lowBin  = Math.max(0, Math.floor((c.l - pMin) / binSize));
+              const highBin = Math.min(NUM_BINS - 1, Math.floor((c.h - pMin) / binSize));
+              if (highBin < 0 || lowBin >= NUM_BINS) continue;
+              const span = Math.max(1, highBin - lowBin + 1);
+              const per = (c.v || 1) / span;
+              for (let i = lowBin; i <= highBin; i++) bins[i] += per;
+            }
 
-          let maxBin = 0;
-          for (let i = 0; i < NUM_BINS; i++) if (bins[i] > maxBin) maxBin = bins[i];
-          if (maxBin === 0) return;
+            let maxBin = 0;
+            for (let i = 0; i < NUM_BINS; i++) if (bins[i] > maxBin) maxBin = bins[i];
+            if (maxBin === 0) return;
 
-          let pocIdx = 0;
-          for (let i = 0; i < NUM_BINS; i++) if (bins[i] === maxBin) { pocIdx = i; break; }
+            let pocIdx = 0;
+            for (let i = 0; i < NUM_BINS; i++) if (bins[i] === maxBin) { pocIdx = i; break; }
 
-          const maxBarWidth = W * 0.22;
-          const slotH = H / NUM_BINS;
-          const barH = slotH * 0.88;
+            const maxBarWidth = W * 0.22;
+            const slotH = H / NUM_BINS;
+            const barH = slotH * 0.88;
 
-          ctx.globalAlpha = 1;
-          for (let i = 0; i < NUM_BINS; i++) {
-            if (bins[i] === 0) continue;
-            const w = (bins[i] / maxBin) * maxBarWidth;
-            const y = H - (i + 1) * slotH + (slotH - barH) / 2;
-            ctx.fillStyle = i === pocIdx ? "rgba(255, 193, 7, 0.55)" : "rgba(88, 166, 255, 0.32)";
-            ctx.fillRect(W - w, y, w, barH);
-          }
+            ctx.globalAlpha = 1;
+            for (let i = 0; i < NUM_BINS; i++) {
+              if (bins[i] === 0) continue;
+              const w = (bins[i] / maxBin) * maxBarWidth;
+              const y = H - (i + 1) * slotH + (slotH - barH) / 2;
+              ctx.fillStyle = i === pocIdx ? "rgba(255, 193, 7, 0.55)" : "rgba(88, 166, 255, 0.32)";
+              ctx.fillRect(W - w, y, w, barH);
+            }
 
-          const pocY = H - (pocIdx + 0.5) * slotH;
-          ctx.strokeStyle = "rgba(255, 193, 7, 0.7)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(0, pocY);
-          ctx.lineTo(W - maxBarWidth - 2, pocY);
-          ctx.stroke();
+            const pocY = H - (pocIdx + 0.5) * slotH;
+            ctx.strokeStyle = "rgba(255, 193, 7, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, pocY);
+            ctx.lineTo(W - maxBarWidth - 2, pocY);
+            ctx.stroke();
 
-          ctx.fillStyle = "rgba(255, 193, 7, 0.9)";
-          ctx.font = "10px ui-monospace, monospace";
-          ctx.textAlign = "left";
-          ctx.textBaseline = "middle";
-          ctx.fillText(`POC · ${label}`, 6, pocY - 8);
+            ctx.fillStyle = "rgba(255, 193, 7, 0.9)";
+            ctx.font = "10px ui-monospace, monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`POC · ${label}`, 6, pocY - 8);
+          });
         }
 
         setVolumeProfile(on) {
@@ -1436,7 +1464,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           if (!vp || !candles.length || candles.length < 21) return;
 
           const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -1444,7 +1472,6 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const tStart = vp.time.start, tEnd = vp.time.end;
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
-          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
 
           const params = this.strategyParams || {};
           const FAST = Math.max(2, Number(params.fastPeriod || 5));
@@ -1467,92 +1494,90 @@ const lastCandleJson = JSON.stringify(lastCandle);
           }
 
           // Helper: build polyline of visible points
-          const buildLine = (arr) => {
-            const pts = [];
-            for (let i = 0; i < candles.length; i++) {
-              if (arr[i] == null) continue;
+          this._withMainPane(ctx, vp, (H) => {
+            const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+            const buildLine = (arr) => {
+              const pts = [];
+              for (let i = 0; i < candles.length; i++) {
+                if (arr[i] == null) continue;
+                const t = candles[i].time;
+                if (t < tStart || t > tEnd) continue;
+                pts.push([t2x(t), p2y(arr[i])]);
+              }
+              return pts;
+            };
+
+            const drawLine = (pts, color, width) => {
+              if (pts.length < 2) return;
+              ctx.strokeStyle = color;
+              ctx.lineWidth = width;
+              ctx.lineJoin = "round";
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(pts[0][0], pts[0][1]);
+              for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+              ctx.stroke();
+            };
+
+            drawLine(buildLine(fast), fastColor, 1.5);
+            drawLine(buildLine(slow), slowColor, 1.5);
+
+            let lastSig = null;
+            for (let i = SLOW; showSignals && i < candles.length; i++) {
               const t = candles[i].time;
               if (t < tStart || t > tEnd) continue;
-              pts.push([t2x(t), p2y(arr[i])]);
+              const prevD = (fast[i-1] ?? 0) - (slow[i-1] ?? 0);
+              const curD  = (fast[i]   ?? 0) - (slow[i]   ?? 0);
+              let kind = null;
+              if (prevD <= 0 && curD > 0) kind = "buy";
+              else if (prevD >= 0 && curD < 0) kind = "sell";
+              if (!kind) continue;
+              if (lastSig === kind) continue;
+              lastSig = kind;
+
+              const x = t2x(t);
+              const y = p2y(candles[i].c);
+
+              ctx.beginPath();
+              if (kind === "buy") {
+                const yT = y + 14;
+                ctx.moveTo(x, yT);
+                ctx.lineTo(x - 6, yT + 9);
+                ctx.lineTo(x + 6, yT + 9);
+                ctx.closePath();
+                ctx.fillStyle = "rgba(63,185,80,0.95)";
+                ctx.fill();
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 9px ui-monospace, monospace";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("B", x, yT + 6);
+              } else {
+                const yT = y - 14;
+                ctx.moveTo(x, yT);
+                ctx.lineTo(x - 6, yT - 9);
+                ctx.lineTo(x + 6, yT - 9);
+                ctx.closePath();
+                ctx.fillStyle = "rgba(248,81,73,0.95)";
+                ctx.fill();
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 9px ui-monospace, monospace";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("S", x, yT - 6);
+              }
             }
-            return pts;
-          };
 
-          const drawLine = (pts, color, width) => {
-            if (pts.length < 2) return;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.lineJoin = "round";
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.stroke();
-          };
-
-          drawLine(buildLine(fast), fastColor, 1.5);
-          drawLine(buildLine(slow), slowColor, 1.5);
-
-          // Find crossovers and draw entry/exit markers
-          let lastSig = null;
-          for (let i = SLOW; showSignals && i < candles.length; i++) {
-            const t = candles[i].time;
-            if (t < tStart || t > tEnd) continue;
-            const prevD = (fast[i-1] ?? 0) - (slow[i-1] ?? 0);
-            const curD  = (fast[i]   ?? 0) - (slow[i]   ?? 0);
-            let kind = null;
-            if (prevD <= 0 && curD > 0) kind = "buy";
-            else if (prevD >= 0 && curD < 0) kind = "sell";
-            if (!kind) continue;
-            if (lastSig === kind) continue; // dedupe consecutive same-direction
-            lastSig = kind;
-
-            const x = t2x(t);
-            const y = p2y(candles[i].c);
-
-            // Triangle marker
-            ctx.beginPath();
-            if (kind === "buy") {
-              // Up triangle below candle
-              const yT = y + 14;
-              ctx.moveTo(x, yT);
-              ctx.lineTo(x - 6, yT + 9);
-              ctx.lineTo(x + 6, yT + 9);
-              ctx.closePath();
-              ctx.fillStyle = "rgba(63,185,80,0.95)";
-              ctx.fill();
-              ctx.fillStyle = "#fff";
-              ctx.font = "bold 9px ui-monospace, monospace";
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillText("B", x, yT + 6);
-            } else {
-              // Down triangle above candle
-              const yT = y - 14;
-              ctx.moveTo(x, yT);
-              ctx.lineTo(x - 6, yT - 9);
-              ctx.lineTo(x + 6, yT - 9);
-              ctx.closePath();
-              ctx.fillStyle = "rgba(248,81,73,0.95)";
-              ctx.fill();
-              ctx.fillStyle = "#fff";
-              ctx.font = "bold 9px ui-monospace, monospace";
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillText("S", x, yT - 6);
-            }
-          }
-
-          // Legend
-          ctx.font = "10px ui-monospace, monospace";
-          ctx.textAlign = "left";
-          ctx.textBaseline = "top";
-          ctx.fillStyle = fastColor;
-          ctx.fillText(`— SMA ${FAST}`,  8, 8);
-          ctx.fillStyle = slowColor;
-          ctx.fillText(`— SMA ${SLOW}`, 8, 22);
-          ctx.fillStyle = "rgba(150,160,170,0.7)";
-          if (showSignals) ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
+            ctx.font = "10px ui-monospace, monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = fastColor;
+            ctx.fillText(`— SMA ${FAST}`,  8, 8);
+            ctx.fillStyle = slowColor;
+            ctx.fillText(`— SMA ${SLOW}`, 8, 22);
+            ctx.fillStyle = "rgba(150,160,170,0.7)";
+            if (showSignals) ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
+          });
         }
 
         _drawNews() {
@@ -1560,7 +1585,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const candles = this.getCachedCandles();
           if (!vp || !candles.length || !this.newsEvents?.length) return;
           const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -1568,30 +1593,30 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
           const colors = { info: "rgba(88,166,255,0.6)", warn: "rgba(227,179,65,0.7)", crit: "rgba(248,81,73,0.7)" };
 
-          ctx.font = "9px ui-monospace, monospace";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          for (const ev of this.newsEvents) {
-            if (ev.time < tStart || ev.time > tEnd) continue;
-            const x = t2x(ev.time);
-            const color = colors[ev.s] || colors.info;
-            // Dashed vertical line
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([3, 3]);
-            ctx.beginPath();
-            ctx.moveTo(x, 20);
-            ctx.lineTo(x, H - 8);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            // Marker bubble at top
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(x, 14, 7, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "#fff";
-            ctx.fillText("N", x, 11);
-          }
+          this._withMainPane(ctx, vp, (H) => {
+            ctx.font = "9px ui-monospace, monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            for (const ev of this.newsEvents) {
+              if (ev.time < tStart || ev.time > tEnd) continue;
+              const x = t2x(ev.time);
+              const color = colors[ev.s] || colors.info;
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 1;
+              ctx.setLineDash([3, 3]);
+              ctx.beginPath();
+              ctx.moveTo(x, 20);
+              ctx.lineTo(x, H - 8);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.arc(x, 14, 7, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#fff";
+              ctx.fillText("N", x, 11);
+            }
+          });
         }
 
         _drawPatterns() {
@@ -1599,14 +1624,13 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const candles = this.getCachedCandles();
           if (!vp || candles.length < 30) return;
           const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
           const tStart = vp.time.start, tEnd = vp.time.end;
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
-          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
           const params = this.patternParams || {};
           const pivotLeft = Number(params.pivotLeft || 4);
           const pivotRight = Number(params.pivotRight || 4);
@@ -1656,45 +1680,47 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this._cachedPatterns = { key: cacheKey, patterns };
           }
 
-          for (const p of this._cachedPatterns.patterns) {
-            const ca = candles[p.a], cb = candles[p.b], cn = candles[p.neckIdx];
-            if (cb.time < tStart || ca.time > tEnd) continue;
+          this._withMainPane(ctx, vp, (H) => {
+            const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+            let rendered = 0;
+            for (const p of this._cachedPatterns.patterns) {
+              const ca = candles[p.a], cb = candles[p.b];
+              if (cb.time < tStart || ca.time > tEnd) continue;
+              if (rendered >= 6) break;
 
-            const xa = t2x(ca.time);
-            const xb = t2x(cb.time);
-            const xn = t2x(cn.time);
-            const isTop = p.kind === "double-top";
-            const ya = p2y(isTop ? ca.h : ca.l);
-            const yb = p2y(isTop ? cb.h : cb.l);
-            const yn = p2y(p.neckPrice);
-            const color = defaultColor;
+              const xa = t2x(ca.time);
+              const xb = t2x(cb.time);
+              const isTop = p.kind === "double-top";
+              const ya = p2y(isTop ? ca.h : ca.l);
+              const yb = p2y(isTop ? cb.h : cb.l);
+              const yn = p2y(p.neckPrice);
+              const color = defaultColor;
 
-            // Arc connecting two peaks/troughs
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash(lineStyle === "dotted" ? [2, 4] : lineStyle === "dashed" ? [5, 4] : []);
-            ctx.beginPath();
-            ctx.moveTo(xa, ya);
-            ctx.quadraticCurveTo((xa + xb) / 2, isTop ? ya - 20 : ya + 20, xb, yb);
-            ctx.stroke();
-            ctx.setLineDash([]);
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash(lineStyle === "dotted" ? [2, 4] : lineStyle === "dashed" ? [5, 4] : []);
+              ctx.beginPath();
+              ctx.moveTo(xa, ya);
+              ctx.quadraticCurveTo((xa + xb) / 2, isTop ? ya - 20 : ya + 20, xb, yb);
+              ctx.stroke();
+              ctx.setLineDash([]);
 
-            // Neckline
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(xa, yn);
-            ctx.lineTo(xb, yn);
-            ctx.stroke();
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(xa, yn);
+              ctx.lineTo(xb, yn);
+              ctx.stroke();
 
-            // Label
-            ctx.font = "bold 10px ui-monospace, monospace";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillStyle = color;
-            const labelY = isTop ? Math.min(ya, yb) - 12 : Math.max(ya, yb) + 14;
-            ctx.fillText(isTop ? "Double Top" : "Double Bottom", (xa + xb) / 2, labelY);
-          }
+              ctx.font = "bold 10px ui-monospace, monospace";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = color;
+              const labelY = isTop ? Math.min(ya, yb) - 12 : Math.max(ya, yb) + 14;
+              ctx.fillText(isTop ? "Double Top" : "Double Bottom", (xa + xb) / 2, labelY);
+              rendered += 1;
+            }
+          });
         }
 
         setPatterns(on, params) {
@@ -1716,7 +1742,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           if (!this._mtfCandles?.length) return;
           const vp = this.getViewportInfo();
           if (!vp) return;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const dpr = window.devicePixelRatio || 1;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1724,7 +1750,6 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const tStart = vp.time.start, tEnd = vp.time.end;
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
-          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
 
           const params = this.mtfParams || {};
           const period = Math.max(1, Number(params.period || 20));
@@ -1740,29 +1765,32 @@ const lastCandleJson = JSON.stringify(lastCandle);
             if (i >= period - 1) sma[i] = sum / period;
           }
 
-          const pts = [];
-          for (let i = 0; i < n; i++) {
-            if (sma[i] == null) continue;
-            const t = this._mtfCandles[i].time;
-            if (t < tStart || t > tEnd) continue;
-            pts.push([t2x(t), p2y(sma[i])]);
-          }
-          if (pts.length < 2) return;
+          this._withMainPane(ctx, vp, (H) => {
+            const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+            const pts = [];
+            for (let i = 0; i < n; i++) {
+              if (sma[i] == null) continue;
+              const t = this._mtfCandles[i].time;
+              if (t < tStart || t > tEnd) continue;
+              pts.push([t2x(t), p2y(sma[i])]);
+            }
+            if (pts.length < 2) return;
 
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2.5;
-          ctx.lineJoin = "round";
-          ctx.lineCap  = "round";
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.stroke();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = "round";
+            ctx.lineCap  = "round";
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
 
-          ctx.font = "10px ui-monospace, monospace";
-          ctx.fillStyle = color;
-          ctx.textAlign = "left";
-          ctx.textBaseline = "top";
-          ctx.fillText(`— SMA ${period} (${this._mtfTfLabel})`, 8, 50);
+            ctx.font = "10px ui-monospace, monospace";
+            ctx.fillStyle = color;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText(`— SMA ${period} (${this._mtfTfLabel})`, 8, 50);
+          });
         }
 
         _drawDivergence() {
@@ -1770,14 +1798,13 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const candles = this.getCachedCandles();
           if (!vp || candles.length < 30) return;
           const dpr = window.devicePixelRatio || 1;
-          const W = vp.dimensions.width, H = vp.dimensions.height;
+          const W = vp.dimensions.width;
           const ctx = this.overlayCanvas.getContext("2d");
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
           const tStart = vp.time.start, tEnd = vp.time.end;
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
-          const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
           const params = this.divergenceParams || {};
           const rsiPeriod = Number(params.rsiPeriod || 14);
           const pivotLeft = Number(params.pivotLeft || 3);
@@ -1819,37 +1846,38 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this._cachedDivergence = { key: cacheKey, divs };
           }
 
-          for (const d of this._cachedDivergence.divs) {
-            const ca = candles[d.a], cb = candles[d.b];
-            if (ca.time < tStart || cb.time > tEnd) continue;
-            const xa = t2x(ca.time), xb = t2x(cb.time);
-            const ya = d.kind === "bear" ? p2y(ca.h) : p2y(ca.l);
-            const yb = d.kind === "bear" ? p2y(cb.h) : p2y(cb.l);
-            const color = d.kind === "bear" ? bearColor : bullColor;
+          this._withMainPane(ctx, vp, (H) => {
+            const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+            for (const d of this._cachedDivergence.divs) {
+              const ca = candles[d.a], cb = candles[d.b];
+              if (ca.time < tStart || cb.time > tEnd) continue;
+              const xa = t2x(ca.time), xb = t2x(cb.time);
+              const ya = d.kind === "bear" ? p2y(ca.h) : p2y(ca.l);
+              const yb = d.kind === "bear" ? p2y(cb.h) : p2y(cb.l);
+              const color = d.kind === "bear" ? bearColor : bullColor;
 
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 3]);
-            ctx.beginPath();
-            ctx.moveTo(xa, ya);
-            ctx.lineTo(xb, yb);
-            ctx.stroke();
-            ctx.setLineDash([]);
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 3]);
+              ctx.beginPath();
+              ctx.moveTo(xa, ya);
+              ctx.lineTo(xb, yb);
+              ctx.stroke();
+              ctx.setLineDash([]);
 
-            // Dots at ends
-            ctx.fillStyle = color;
-            ctx.beginPath(); ctx.arc(xa, ya, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(xb, yb, 3, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = color;
+              ctx.beginPath(); ctx.arc(xa, ya, 3, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(xb, yb, 3, 0, Math.PI * 2); ctx.fill();
 
-            // Label
-            const label = d.kind === "bear" ? "Bear Div" : "Bull Div";
-            const ly = d.kind === "bear" ? Math.min(ya, yb) - 8 : Math.max(ya, yb) + 14;
-            ctx.font = "bold 10px ui-monospace, monospace";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillStyle = color;
-            ctx.fillText(label, (xa + xb) / 2, ly);
-          }
+              const label = d.kind === "bear" ? "Bear Div" : "Bull Div";
+              const ly = d.kind === "bear" ? Math.min(ya, yb) - 8 : Math.max(ya, yb) + 14;
+              ctx.font = "bold 10px ui-monospace, monospace";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = color;
+              ctx.fillText(label, (xa + xb) / 2, ly);
+            }
+          });
         }
 
         _drawVolumeProfileSession() {

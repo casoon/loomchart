@@ -303,13 +303,13 @@ impl WasmChart {
         compare_symbols: &[CompareSymbol],
         state: &ChartState,
         renderer: &mut Canvas2DRenderer,
+        chart_height: f64,
     ) {
         if compare_symbols.is_empty() {
             return;
         }
 
         let vp = &state.viewport;
-        let chart_height = vp.dimensions.height as f64;
         let chart_width = vp.dimensions.width as f64;
         let time_start = vp.time.start;
         let time_end = vp.time.end;
@@ -411,6 +411,14 @@ impl WasmChart {
                 );
             }
         }
+    }
+
+    fn main_chart_height(indicator_panes: &[IndicatorPane], height: f64) -> f64 {
+        if indicator_panes.is_empty() {
+            return height;
+        }
+        let indicator_total: f64 = indicator_panes.iter().map(|pane| pane.height_fraction).sum();
+        height * (1.0 - indicator_total).max(0.38)
     }
 
     fn render_footprint_candles(
@@ -564,7 +572,7 @@ impl WasmChart {
         let height = vp.dimensions.height as f64;
         let indicator_total: f64 = indicator_panes.iter().map(|pane| pane.height_fraction).sum();
         let mut top = height * (1.0 - indicator_total).max(0.38);
-        let bg = state.options.background_color.with_alpha(0.96);
+        let bg = state.options.background_color.with_alpha(1.0);
         let border = state.options.grid_color.with_alpha(0.8);
         let text = state.options.text_color.with_alpha(0.82);
 
@@ -634,27 +642,32 @@ impl WasmChart {
         }
     }
 
-    fn render_axes(state: &ChartState, renderer: &mut Canvas2DRenderer) {
+    fn render_axes(
+        state: &ChartState,
+        indicator_panes: &[IndicatorPane],
+        renderer: &mut Canvas2DRenderer,
+    ) {
         let vp = &state.viewport;
         let width = vp.dimensions.width as f64;
         let height = vp.dimensions.height as f64;
+        let main_height = Self::main_chart_height(indicator_panes, height);
         let axis_color = state.options.text_color.with_alpha(0.78);
         let bg = state.options.background_color.with_alpha(0.82);
         let grid = state.options.grid_color.with_alpha(0.85);
 
         let price_axis_w = 64.0;
         let time_axis_h = 20.0;
-        renderer.fill_rect(width - price_axis_w, 0.0, price_axis_w, height, bg);
+        renderer.fill_rect(width - price_axis_w, 0.0, price_axis_w, main_height, bg);
         renderer.fill_rect(0.0, height - time_axis_h, width, time_axis_h, bg);
-        renderer.draw_line(width - price_axis_w, 0.0, width - price_axis_w, height, grid, 1.0);
+        renderer.draw_line(width - price_axis_w, 0.0, width - price_axis_w, main_height, grid, 1.0);
         renderer.draw_line(0.0, height - time_axis_h, width, height - time_axis_h, grid, 1.0);
 
         let price_lines = 6;
         let price_step = (vp.price.max - vp.price.min) / price_lines as f64;
         for i in 0..=price_lines {
             let price = vp.price.min + price_step * i as f64;
-            let y = vp.price_to_y(price);
-            if y < 0.0 || y > height - time_axis_h {
+            let y = (vp.price.max - price) / (vp.price.max - vp.price.min) * main_height;
+            if y < 0.0 || y > main_height {
                 continue;
             }
             renderer.draw_text(
@@ -1293,7 +1306,14 @@ impl WasmChart {
 
         // Draw comparison symbols as percent-performance overlays with their
         // own right-side scale.
-        Self::render_compare_symbols(&self.compare_symbols, &self.state, renderer);
+        let main_height = Self::main_chart_height(
+            &self.indicator_panes,
+            self.state.viewport.dimensions.height as f64,
+        );
+
+        renderer.set_clip(0.0, 0.0, self.state.viewport.dimensions.width as f64, main_height);
+        Self::render_compare_symbols(&self.compare_symbols, &self.state, renderer, main_height);
+        renderer.clear_clip();
         Self::render_indicator_panes(&self.indicator_panes, &self.state, renderer);
 
         // Draw drawing tools
@@ -1301,12 +1321,21 @@ impl WasmChart {
             let vp = &self.state.viewport;
             let tools = self.state.tool_manager.tools();
 
+            renderer.set_clip(0.0, 0.0, vp.dimensions.width as f64, main_height);
             for tool in tools {
                 tool.render(renderer, vp);
             }
+            renderer.clear_clip();
         }
 
+        renderer.set_clip(
+            0.0,
+            0.0,
+            self.state.viewport.dimensions.width as f64,
+            main_height,
+        );
         Self::render_selected_drawing_highlights(&self.state, renderer);
+        renderer.clear_clip();
 
         // Draw crosshair with pixel-perfect rendering
         if self.state.options.show_crosshair && self.state.crosshair.visible {
@@ -1330,7 +1359,7 @@ impl WasmChart {
             );
         }
 
-        Self::render_axes(&self.state, renderer);
+        Self::render_axes(&self.state, &self.indicator_panes, renderer);
 
         renderer.end_frame();
 
