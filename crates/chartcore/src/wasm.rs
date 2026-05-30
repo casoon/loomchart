@@ -634,6 +634,66 @@ impl WasmChart {
         }
     }
 
+    fn render_axes(state: &ChartState, renderer: &mut Canvas2DRenderer) {
+        let vp = &state.viewport;
+        let width = vp.dimensions.width as f64;
+        let height = vp.dimensions.height as f64;
+        let axis_color = state.options.text_color.with_alpha(0.78);
+        let bg = state.options.background_color.with_alpha(0.82);
+        let grid = state.options.grid_color.with_alpha(0.85);
+
+        let price_axis_w = 64.0;
+        let time_axis_h = 20.0;
+        renderer.fill_rect(width - price_axis_w, 0.0, price_axis_w, height, bg);
+        renderer.fill_rect(0.0, height - time_axis_h, width, time_axis_h, bg);
+        renderer.draw_line(width - price_axis_w, 0.0, width - price_axis_w, height, grid, 1.0);
+        renderer.draw_line(0.0, height - time_axis_h, width, height - time_axis_h, grid, 1.0);
+
+        let price_lines = 6;
+        let price_step = (vp.price.max - vp.price.min) / price_lines as f64;
+        for i in 0..=price_lines {
+            let price = vp.price.min + price_step * i as f64;
+            let y = vp.price_to_y(price);
+            if y < 0.0 || y > height - time_axis_h {
+                continue;
+            }
+            renderer.draw_text(
+                &format!("{:.2}", price),
+                width - 4.0,
+                y,
+                axis_color,
+                10.0,
+                crate::rendering::TextAlign::Right,
+                crate::rendering::TextBaseline::Middle,
+            );
+        }
+
+        let time_lines = 5;
+        let time_span = (vp.time.end - vp.time.start).max(1);
+        for i in 0..=time_lines {
+            let time = vp.time.start + time_span * i as i64 / time_lines as i64;
+            let x = vp.time_to_x(time);
+            if x < 0.0 || x > width - price_axis_w {
+                continue;
+            }
+            renderer.draw_text(
+                &Self::format_axis_time(time),
+                x,
+                height - 4.0,
+                axis_color,
+                10.0,
+                crate::rendering::TextAlign::Center,
+                crate::rendering::TextBaseline::Bottom,
+            );
+        }
+    }
+
+    fn format_axis_time(time: i64) -> String {
+        chrono::DateTime::from_timestamp(time, 0)
+            .map(|dt| dt.format("%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| time.to_string())
+    }
+
     fn oscillator_series(indicator_id: &str, candles: &[Candle]) -> Vec<(i64, f64)> {
         let closes: Vec<f64> = candles.iter().map(|c| c.c).collect();
         let highs: Vec<f64> = candles.iter().map(|c| c.h).collect();
@@ -1270,8 +1330,7 @@ impl WasmChart {
             );
         }
 
-        // Note: Axes are now rendered separately in JavaScript/TypeScript
-        // using getViewportInfo() to get the current time/price ranges
+        Self::render_axes(&self.state, renderer);
 
         renderer.end_frame();
 

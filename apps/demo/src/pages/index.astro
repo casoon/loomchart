@@ -1228,8 +1228,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 this._selectedDrag = this._wasm((c) => c.startSelectedDrawingsDrag?.(x, y)) ?? false;
                 return;
               }
-              this.onLassoStart?.(x, y, e.shiftKey);
-              return;
+              if (e.shiftKey) {
+                this.onLassoStart?.(x, y, true);
+                return;
+              }
             }
             this._wasm((c) => c.onMouseDown(x, y, e.button));
           });
