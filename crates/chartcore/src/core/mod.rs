@@ -16,6 +16,7 @@ mod invalidation;
 pub mod overlay;
 pub mod overlays;
 mod pane;
+pub mod renko;
 mod scale;
 mod types;
 mod viewport;
@@ -28,7 +29,7 @@ pub use candle_lifecycle::{CandleEvent, CandleStore};
 pub use buffer::ChartBuffer;
 pub use chart::Chart;
 pub use chart_renderer::{ChartRenderer, ChartTheme};
-pub use chart_state::{ChartOptions, ChartState, CrosshairState, InteractionState};
+pub use chart_state::{ChartOptions, ChartState, CrosshairState, InteractionState, MagnetMode};
 pub use config::ChartConfig;
 pub use events::{EventHandler, KeyboardEvent, MouseButton, MouseEvent, TouchEvent};
 pub use generator::{
@@ -36,8 +37,8 @@ pub use generator::{
 };
 pub use indicator_renderer::IndicatorRenderer;
 pub use invalidation::{InvalidationLevel, InvalidationLevels, InvalidationMask, LayeredInvalidation, RenderLayer};
-pub use types::{Candle, Point, Timeframe};
-pub use viewport::{Dimensions, PriceRange, TimeRange, Viewport};
+pub use types::{Candle, Point, SessionConfig, Timeframe};
+pub use viewport::{Dimensions, PriceRange, TimeRange, Viewport, ViewportScaleMode};
 pub use volume_pane::{VolumePane, VolumePaneConfig};
 pub use overlay::{ChartOverlay, OverlayRegistry};
 pub use pane::{Pane, PaneLayout};

@@ -97,6 +97,7 @@ impl DrawingRenderer {
             DrawingType::FibonacciRetracement => {
                 Self::render_fibonacci(drawing, viewport, is_selected)
             }
+            DrawingType::Ellipse => Self::render_rectangle(drawing, viewport, is_selected),
         }
     }
 

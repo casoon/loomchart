@@ -305,9 +305,18 @@ impl WasmChart {
             "hollow" => crate::primitives::CandleStyle::Hollow,
             "line" => crate::primitives::CandleStyle::Line,
             "area" => crate::primitives::CandleStyle::Area,
+            s if s.starts_with("renko") => {
+                // Accept "renko" (default brick) or "renko:5.0"
+                let brick_size = if let Some(rest) = s.strip_prefix("renko:") {
+                    rest.parse::<f64>().unwrap_or(10.0)
+                } else {
+                    10.0
+                };
+                crate::primitives::CandleStyle::Renko { brick_size }
+            }
             _ => {
                 return Err(JsValue::from_str(
-                    "Invalid candle style. Use: candlestick, ohlc, hollow, line, or area",
+                    "Invalid candle style. Use: candlestick, ohlc, hollow, line, area, or renko[:brick_size]",
                 ))
             }
         };
@@ -396,7 +405,15 @@ impl WasmChart {
     /// Get viewport info as JSON
     #[wasm_bindgen(js_name = getViewportInfo)]
     pub fn get_viewport_info(&self) -> JsValue {
+        use crate::core::ViewportScaleMode;
         let vp = &self.state.viewport;
+
+        let scale_mode_str = match vp.scale_mode {
+            ViewportScaleMode::Price => "price",
+            ViewportScaleMode::Log => "log",
+            ViewportScaleMode::Percent => "percent",
+            ViewportScaleMode::Indexed => "indexed",
+        };
 
         let info = serde_json::json!({
             "time": {
@@ -414,6 +431,9 @@ impl WasmChart {
             },
             "visibleBars": vp.visible_bars(),
             "barWidth": vp.bar_width(),
+            "timezoneOffsetMinutes": vp.timezone_offset_minutes,
+            "scaleMode": scale_mode_str,
+            "scaleBasePrice": vp.scale_base_price,
         });
 
         JsValue::from_str(&info.to_string())
@@ -561,10 +581,21 @@ impl WasmChart {
 
             let candle_style = self.state.options.candle_style;
 
+            // For Renko: transform candles first, then render as candlestick bricks
+            let renko_bricks: Vec<Candle>;
+            let owned_visible: Vec<Candle>;
+            let render_candles: &[Candle] = if let crate::primitives::CandleStyle::Renko { brick_size } = candle_style {
+                renko_bricks = crate::core::renko::compute_renko(&self.state.candles, brick_size);
+                &renko_bricks
+            } else {
+                owned_visible = visible_candles.iter().map(|c| (*c).clone()).collect();
+                &owned_visible
+            };
+
             match candle_style {
                 crate::primitives::CandleStyle::Line | crate::primitives::CandleStyle::Area => {
                     // Render as polyline / filled area through close prices
-                    let points: Vec<(f64, f64)> = visible_candles
+                    let points: Vec<(f64, f64)> = render_candles
                         .iter()
                         .map(|c| (vp.time_to_x(c.time), vp.price_to_y(c.c)))
                         .collect();
@@ -584,8 +615,24 @@ impl WasmChart {
                         renderer.draw_polyline(&points, line_color, 2.0);
                     }
                 }
+                crate::primitives::CandleStyle::Renko { brick_size: _ } => {
+                    // Renko bricks rendered as filled rectangles
+                    for candle in render_candles {
+                        if candle.time < vp.time.start || candle.time > vp.time.end {
+                            continue;
+                        }
+                        let x = vp.time_to_x(candle.time);
+                        let top_y = vp.price_to_y(candle.h);
+                        let bot_y = vp.price_to_y(candle.l);
+                        let height = (bot_y - top_y).abs().max(1.0);
+                        let w = bar_width / pixel_ratio;
+                        let color = if candle.c >= candle.o { bullish_color } else { bearish_color };
+                        renderer.fill_rect(x - w / 2.0, top_y, w, height, color);
+                        renderer.stroke_rect(x - w / 2.0, top_y, w, height, unchanged_color, 0.5);
+                    }
+                }
                 _ => {
-                    for candle in visible_candles {
+                    for candle in render_candles {
                         let x = vp.time_to_x(candle.time);
                         let open_y = vp.price_to_y(candle.o);
                         let high_y = vp.price_to_y(candle.h);
@@ -614,6 +661,66 @@ impl WasmChart {
                             }
                             _ => unreachable!(),
                         }
+                    }
+                }
+            }
+        }
+
+        // Draw session markers (rendered behind candles — drawn before tools)
+        if self.state.options.show_sessions && !self.state.options.sessions.is_empty() {
+            let vp = &self.state.viewport;
+            let tf_secs = self.state.timeframe.duration_ms() as i64 / 1000;
+            // Only show session markers for timeframes <= 1h (3600s)
+            if tf_secs <= 3600 {
+                let chart_width = vp.dimensions.width as f64;
+                let chart_height = vp.dimensions.height as f64;
+                let time_start = vp.time.start;
+                let time_end = vp.time.end;
+
+                // Iterate over each day in the visible range (±1 day buffer)
+                let day_secs: i64 = 86400;
+                let first_day = ((time_start - day_secs) / day_secs) * day_secs;
+                let last_day = ((time_end + day_secs) / day_secs) * day_secs;
+
+                for session in &self.state.options.sessions.clone() {
+                    let line_color = crate::primitives::Color::rgba(
+                        session.color.0,
+                        session.color.1,
+                        session.color.2,
+                        session.color.3 as f32 / 255.0,
+                    );
+
+                    let mut day = first_day;
+                    while day <= last_day {
+                        if session.show_open {
+                            let open_ts = day
+                                + session.open_utc.0 as i64 * 3600
+                                + session.open_utc.1 as i64 * 60;
+                            if open_ts >= time_start && open_ts <= time_end {
+                                let x = vp.time_to_x(open_ts);
+                                if x >= 0.0 && x <= chart_width {
+                                    renderer.draw_line(x, 0.0, x, chart_height, line_color, 1.0);
+                                }
+                            }
+                        }
+                        if session.show_close {
+                            let close_ts = day
+                                + session.close_utc.0 as i64 * 3600
+                                + session.close_utc.1 as i64 * 60;
+                            if close_ts >= time_start && close_ts <= time_end {
+                                let x = vp.time_to_x(close_ts);
+                                if x >= 0.0 && x <= chart_width {
+                                    let dashed_color = crate::primitives::Color::rgba(
+                                        session.color.0,
+                                        session.color.1,
+                                        session.color.2,
+                                        (session.color.3 as f32 / 255.0) * 0.5,
+                                    );
+                                    renderer.draw_line(x, 0.0, x, chart_height, dashed_color, 1.0);
+                                }
+                            }
+                        }
+                        day += day_secs;
                     }
                 }
             }
@@ -1036,6 +1143,191 @@ impl WasmChart {
             self.state.mark_dirty();
         }
 
+        Ok(())
+    }
+
+    // ========== Ellipse Drawing Tool ==========
+
+    /// Create an ellipse drawing tool (bounding box defined by two corner points)
+    #[wasm_bindgen(js_name = createEllipse)]
+    pub fn create_ellipse(
+        &mut self,
+        id: &str,
+        t1: i64,
+        p1: f64,
+        t2: i64,
+        p2: f64,
+    ) -> Result<(), JsValue> {
+        use crate::tools::{Ellipse, ToolNode};
+        self._push_undo();
+        let tool = Ellipse::with_corners(
+            id.to_string(),
+            ToolNode { time: t1, price: p1 },
+            ToolNode { time: t2, price: p2 },
+        );
+        self.state.tool_manager.add_tool(Box::new(tool));
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    // ========== Magnet / Snap Mode ==========
+
+    /// Set the magnet/snap mode for drawing tool placement.
+    /// `mode` must be one of: "off", "weak", "strong"
+    #[wasm_bindgen(js_name = setMagnetMode)]
+    pub fn set_magnet_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        use crate::core::MagnetMode;
+        self.state.magnet_mode = match mode {
+            "off" => MagnetMode::Off,
+            "weak" => MagnetMode::Weak,
+            "strong" => MagnetMode::Strong,
+            _ => return Err(JsValue::from_str("Invalid magnet mode. Use: off, weak, strong")),
+        };
+        Ok(())
+    }
+
+    /// Get current magnet mode as string
+    #[wasm_bindgen(js_name = getMagnetMode)]
+    pub fn get_magnet_mode(&self) -> String {
+        use crate::core::MagnetMode;
+        match self.state.magnet_mode {
+            MagnetMode::Off => "off".to_string(),
+            MagnetMode::Weak => "weak".to_string(),
+            MagnetMode::Strong => "strong".to_string(),
+        }
+    }
+
+    /// Snap a (time, price) coordinate to the nearest OHLC point when magnet is active.
+    /// Returns JSON: `{ time: i64, price: f64, snapped: bool }`
+    #[wasm_bindgen(js_name = snapToCandle)]
+    pub fn snap_to_candle_wasm(&self, time: i64, price: f64) -> JsValue {
+        use crate::core::MagnetMode;
+        let threshold_px = 20.0;
+        let (snapped_time, snapped_price) = match self.state.magnet_mode {
+            MagnetMode::Off => (time, price),
+            MagnetMode::Weak | MagnetMode::Strong => {
+                self.state.tool_manager.snap_to_candle(
+                    time, price, &self.state.candles, threshold_px, &self.state.viewport,
+                )
+            }
+        };
+        let snapped = snapped_time != time || snapped_price != price;
+        let info = serde_json::json!({
+            "time": snapped_time,
+            "price": snapped_price,
+            "snapped": snapped,
+        });
+        JsValue::from_str(&info.to_string())
+    }
+
+    // ========== Session Markers ==========
+
+    /// Set trading session configurations from JSON array.
+    /// Each session: `{ name, open_utc: [h,m], close_utc: [h,m], color: [r,g,b,a], show_open, show_close }`
+    /// Pass an empty array `[]` to clear sessions.
+    /// Pass `"default"` as the string to load NYSE, London, Tokyo, Sydney presets.
+    #[wasm_bindgen(js_name = setSessions)]
+    pub fn set_sessions(&mut self, sessions_json: &str) -> Result<(), JsValue> {
+        use crate::core::SessionConfig;
+        if sessions_json == "default" {
+            self.state.options.sessions = vec![
+                SessionConfig::nyse(),
+                SessionConfig::london(),
+                SessionConfig::tokyo(),
+                SessionConfig::sydney(),
+            ];
+        } else {
+            let sessions: Vec<SessionConfig> = serde_json::from_str(sessions_json)
+                .map_err(|e| JsValue::from_str(&format!("Invalid sessions JSON: {}", e)))?;
+            self.state.options.sessions = sessions;
+        }
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Show or hide session marker lines
+    #[wasm_bindgen(js_name = setShowSessions)]
+    pub fn set_show_sessions(&mut self, show: bool) {
+        self.state.options.show_sessions = show;
+        self.state.mark_dirty();
+    }
+
+    // ========== Timezone ==========
+
+    /// Set timezone offset in minutes from UTC.
+    /// Examples: 60 = UTC+1, -300 = UTC-5, 540 = UTC+9, 0 = UTC
+    #[wasm_bindgen(js_name = setTimezone)]
+    pub fn set_timezone(&mut self, offset_minutes: i32) {
+        self.state.viewport.timezone_offset_minutes = offset_minutes;
+        self.state.mark_dirty();
+    }
+
+    /// Get current timezone offset in minutes
+    #[wasm_bindgen(js_name = getTimezoneOffset)]
+    pub fn get_timezone_offset(&self) -> i32 {
+        self.state.viewport.timezone_offset_minutes
+    }
+
+    // ========== Price Scale Mode ==========
+
+    /// Set price scale display mode.
+    /// `mode` must be one of: "price", "log", "percent", "indexed"
+    #[wasm_bindgen(js_name = setScaleMode)]
+    pub fn set_scale_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        use crate::core::ViewportScaleMode;
+        self.state.viewport.scale_mode = match mode {
+            "price" => {
+                self.state.viewport.log_scale = false;
+                ViewportScaleMode::Price
+            }
+            "log" => {
+                self.state.viewport.log_scale = true;
+                ViewportScaleMode::Log
+            }
+            "percent" => {
+                self.state.viewport.log_scale = false;
+                // Set base price from first visible candle
+                if let Some(first) = self.state.visible_candles().first() {
+                    self.state.viewport.scale_base_price = first.c;
+                }
+                ViewportScaleMode::Percent
+            }
+            "indexed" => {
+                self.state.viewport.log_scale = false;
+                if let Some(first) = self.state.visible_candles().first() {
+                    self.state.viewport.scale_base_price = first.c;
+                }
+                ViewportScaleMode::Indexed
+            }
+            _ => return Err(JsValue::from_str("Invalid scale mode. Use: price, log, percent, indexed")),
+        };
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Get current scale mode as string
+    #[wasm_bindgen(js_name = getScaleMode)]
+    pub fn get_scale_mode(&self) -> String {
+        use crate::core::ViewportScaleMode;
+        match self.state.viewport.scale_mode {
+            ViewportScaleMode::Price => "price".to_string(),
+            ViewportScaleMode::Log => "log".to_string(),
+            ViewportScaleMode::Percent => "percent".to_string(),
+            ViewportScaleMode::Indexed => "indexed".to_string(),
+        }
+    }
+
+    // ========== Renko ==========
+
+    /// Set candle style, including Renko with brick size.
+    /// For renko: pass "renko" and provide brick_size > 0.
+    #[wasm_bindgen(js_name = setRenkoBrickSize)]
+    pub fn set_renko_brick_size(&mut self, brick_size: f64) -> Result<(), JsValue> {
+        if brick_size <= 0.0 {
+            return Err(JsValue::from_str("brick_size must be > 0"));
+        }
+        self.state.options.candle_style = crate::primitives::CandleStyle::Renko { brick_size };
+        self.state.mark_dirty();
         Ok(())
     }
 }

@@ -4,6 +4,7 @@ use crate::rendering::Canvas2DRenderer;
 use crate::Color;
 use serde::{Deserialize, Serialize};
 
+pub mod ellipse;
 pub mod fibonacci_retracement;
 pub mod horizontal_line;
 pub mod rectangle;
@@ -12,6 +13,7 @@ pub mod trendline;
 pub mod vertical_line;
 
 // Re-export tool types for convenience
+pub use ellipse::Ellipse;
 pub use fibonacci_retracement::FibonacciRetracement;
 pub use horizontal_line::HorizontalLine;
 pub use rectangle::Rectangle;
@@ -41,6 +43,7 @@ pub enum ToolType {
     Rectangle,
     FibonacciRetracement,
     TextLabel,
+    Ellipse,
 }
 
 /// Base trait for all drawing tools
@@ -324,6 +327,11 @@ impl ToolManager {
                 ToolType::TextLabel => {
                     let t: TextLabel = serde_json::from_value(env.data)
                         .map_err(|e| format!("TextLabel deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::Ellipse => {
+                    let t: Ellipse = serde_json::from_value(env.data)
+                        .map_err(|e| format!("Ellipse deserialization error: {}", e))?;
                     Box::new(t)
                 }
             };

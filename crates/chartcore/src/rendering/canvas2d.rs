@@ -550,6 +550,27 @@ impl Canvas2DRenderer {
         self.ctx.fill();
     }
 
+    /// Fill an ellipse defined by center (cx, cy) and radii (rx, ry)
+    pub fn fill_ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, color: Color) {
+        self.set_fill_color(color);
+        self.ctx.begin_path();
+        self.ctx
+            .ellipse(cx, cy, rx, ry, 0.0, 0.0, 2.0 * std::f64::consts::PI)
+            .unwrap_or_default();
+        self.ctx.fill();
+    }
+
+    /// Stroke an ellipse defined by center (cx, cy) and radii (rx, ry)
+    pub fn stroke_ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, color: Color, width: f32) {
+        self.set_stroke_color(color);
+        self.ctx.set_line_width(width as f64);
+        self.ctx.begin_path();
+        self.ctx
+            .ellipse(cx, cy, rx, ry, 0.0, 0.0, 2.0 * std::f64::consts::PI)
+            .unwrap_or_default();
+        self.ctx.stroke();
+    }
+
     // ===== Coordinate-Aware Rendering Methods =====
 
     /// Get bitmap space (device pixel coordinates)

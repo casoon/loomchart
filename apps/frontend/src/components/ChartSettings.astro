@@ -30,7 +30,11 @@
               <option value="hollow">Hollow Candles</option>
               <option value="line">Line</option>
               <option value="area">Area</option>
+              <option value="renko">Renko</option>
             </select>
+          </label>
+          <label class="cs-row" id="cs-renko-row" style="display:none"><span>Renko brick size</span>
+            <input type="number" data-key="renkoBrickSize" min="0.01" step="0.01" style="width:80px" />
           </label>
           <label class="cs-row"><span>Up color</span>
             <input type="color" data-key="upColor" />
@@ -70,6 +74,32 @@
           </label>
           <label class="cs-row"><span>Scale labels</span>
             <input type="checkbox" data-key="scaleLabels" />
+          </label>
+          <label class="cs-row"><span>Price scale mode</span>
+            <select data-key="scaleMode">
+              <option value="price">Price</option>
+              <option value="log">Logarithmic</option>
+              <option value="percent">Percentage</option>
+              <option value="indexed">Indexed to 100</option>
+            </select>
+          </label>
+          <label class="cs-row"><span>Timezone</span>
+            <select data-key="timezone">
+              <option value="0">UTC</option>
+              <option value="60">Europe/London (UTC+1)</option>
+              <option value="120">Europe/Berlin (UTC+2)</option>
+              <option value="-300">US/Eastern (UTC-5)</option>
+              <option value="-360">US/Central (UTC-6)</option>
+              <option value="-420">US/Mountain (UTC-7)</option>
+              <option value="-480">US/Pacific (UTC-8)</option>
+              <option value="330">Asia/Kolkata (UTC+5:30)</option>
+              <option value="480">Asia/Shanghai (UTC+8)</option>
+              <option value="540">Asia/Tokyo (UTC+9)</option>
+              <option value="600">Australia/Sydney (UTC+10)</option>
+            </select>
+          </label>
+          <label class="cs-row"><span>Session markers</span>
+            <input type="checkbox" data-key="showSessions" />
           </label>
         </section>
 
@@ -175,6 +205,7 @@
   const KEY = 'loom.chart.settings';
   const DEFAULTS = {
     candleStyle: 'candlestick',
+    renkoBrickSize: 10,
     upColor: '#26a69a',
     downColor: '#ef5350',
     wickVisible: true,
@@ -186,6 +217,9 @@
     gridColor: '#2a2e39',
     axisTextColor: '#9598a1',
     scaleLabels: true,
+    scaleMode: 'price',
+    timezone: '0',
+    showSessions: false,
     theme: 'dark',
     background: '#0b0f17',
     crosshairVisible: true,
@@ -243,14 +277,31 @@
     const chart = getChart();
     if (chart) {
       try { chart.setTheme?.(settings.theme === 'dark'); } catch (_) {}
-      try { chart.setCandleStyle?.(settings.candleStyle); } catch (_) {}
+      try {
+        const style = settings.candleStyle === 'renko'
+          ? `renko:${settings.renkoBrickSize || 10}`
+          : settings.candleStyle;
+        chart.setCandleStyle?.(style);
+      } catch (_) {}
       try { chart.setCandleColors?.(settings.upColor, settings.downColor); } catch (_) {}
       try { chart.setGridVisible?.(settings.gridVisible); } catch (_) {}
       try { chart.setGridColor?.(settings.gridColor); } catch (_) {}
       try { chart.setBackgroundColor?.(settings.background); } catch (_) {}
       try { chart.setCrosshairVisible?.(settings.crosshairVisible); } catch (_) {}
       try { chart.setVolumeVisible?.(settings.volumeVisible); } catch (_) {}
+      try { chart.setScaleMode?.(settings.scaleMode || 'price'); } catch (_) {}
+      try { chart.setTimezone?.(parseInt(settings.timezone || '0', 10)); } catch (_) {}
+      try {
+        chart.setShowSessions?.(!!settings.showSessions);
+        if (settings.showSessions) {
+          chart.setSessions?.('default');
+        }
+      } catch (_) {}
     }
+
+    // Show/hide renko brick size input
+    const renkoRow = document.getElementById('cs-renko-row');
+    if (renkoRow) renkoRow.style.display = settings.candleStyle === 'renko' ? 'flex' : 'none';
 
     // Broadcast for components that render their own layers.
     window.dispatchEvent(new CustomEvent('chart-settings-changed', { detail: { ...settings } }));

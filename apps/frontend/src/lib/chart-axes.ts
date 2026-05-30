@@ -16,6 +16,9 @@ export interface ViewportInfo {
   time: { start: number; end: number };
   price: { min: number; max: number };
   dimensions: { width: number; height: number };
+  timezoneOffsetMinutes?: number;
+  scaleMode?: "price" | "log" | "percent" | "indexed";
+  scaleBasePrice?: number;
 }
 
 /**
@@ -66,6 +69,23 @@ export class PriceAxis {
   update(viewport: ViewportInfo, currentPrice?: number): void {
     const { min, max } = viewport.price;
     const step = (max - min) / (this.config.labelCount! - 1);
+    const scaleMode = viewport.scaleMode || "price";
+    const basePrice = viewport.scaleBasePrice || 1;
+
+    const formatPriceLabel = (price: number): string => {
+      switch (scaleMode) {
+        case "percent": {
+          const pct = basePrice > 0 ? (price / basePrice - 1) * 100 : 0;
+          return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+        }
+        case "indexed": {
+          const idx = basePrice > 0 ? (price / basePrice) * 100 : 0;
+          return idx.toFixed(2);
+        }
+        default:
+          return price.toFixed(2);
+      }
+    };
 
     // Clear and regenerate labels
     this.container.innerHTML = "";
@@ -73,7 +93,7 @@ export class PriceAxis {
     for (let i = 0; i < this.config.labelCount!; i++) {
       const price = max - i * step; // Top to bottom
       const label = document.createElement("div");
-      label.textContent = price.toFixed(2);
+      label.textContent = formatPriceLabel(price);
       label.style.cssText = `
         text-align: ${this.config.position === "right" ? "right" : "left"};
         padding: 2px 6px;
@@ -320,18 +340,21 @@ export class TimeAxis {
   update(viewport: ViewportInfo): void {
     const { start, end } = viewport.time;
     const step = (end - start) / (this.config.labelCount! - 1);
+    const tzOffsetSec = (viewport.timezoneOffsetMinutes || 0) * 60;
 
     // Clear and regenerate labels
     this.container.innerHTML = "";
 
     for (let i = 0; i < this.config.labelCount!; i++) {
       const timestamp = start + i * step;
-      const date = new Date(timestamp * 1000); // Convert seconds to milliseconds
+      // Apply timezone offset: shift UTC timestamp by offset
+      const localTs = timestamp + tzOffsetSec;
+      const date = new Date(localTs * 1000); // Treat as UTC after offset
       const label = document.createElement("div");
 
-      // Format as HH:MM
-      const hours = date.getHours().toString().padStart(2, "0");
-      const minutes = date.getMinutes().toString().padStart(2, "0");
+      // Format as HH:MM using UTC (offset already applied)
+      const hours = date.getUTCHours().toString().padStart(2, "0");
+      const minutes = date.getUTCMinutes().toString().padStart(2, "0");
       label.textContent = `${hours}:${minutes}`;
 
       label.style.cssText = `

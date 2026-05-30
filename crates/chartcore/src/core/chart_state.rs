@@ -1,8 +1,19 @@
 //! Chart State Management - Central state container for the chart engine
 
-use super::types::{Candle, Timeframe};
+use super::types::{Candle, SessionConfig, Timeframe};
 use super::viewport::{PriceRange, TimeRange, Viewport};
 use crate::primitives::{CandleStyle, Color};
+
+/// Magnet/snap mode for drawing tool placement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MagnetMode {
+    /// Snapping disabled
+    Off,
+    /// Snap only when near a candle high or low (within 20px)
+    Weak,
+    /// Snap to any OHLC level (within 20px)
+    Strong,
+}
 
 /// Chart configuration
 #[derive(Debug, Clone)]
@@ -18,6 +29,8 @@ pub struct ChartOptions {
     pub show_grid: bool,
     pub show_crosshair: bool,
     pub show_volume: bool,
+    pub sessions: Vec<SessionConfig>,
+    pub show_sessions: bool,
 }
 
 impl Default for ChartOptions {
@@ -34,6 +47,8 @@ impl Default for ChartOptions {
             show_grid: true,
             show_crosshair: true,
             show_volume: true,
+            sessions: Vec::new(),
+            show_sessions: false,
         }
     }
 }
@@ -97,6 +112,7 @@ pub struct ChartState {
     pub interaction: InteractionState,
     pub timeframe: Timeframe,
     pub tool_manager: crate::tools::ToolManager,
+    pub magnet_mode: MagnetMode,
     dirty: bool,
 }
 
@@ -113,6 +129,7 @@ impl ChartState {
             interaction: InteractionState::default(),
             timeframe,
             tool_manager: crate::tools::ToolManager::new(),
+            magnet_mode: MagnetMode::Off,
             dirty: true,
         }
     }

@@ -30,6 +30,21 @@ pub struct Dimensions {
     pub pixel_ratio: f64,
 }
 
+/// Price scale display mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewportScaleMode {
+    Price,
+    Log,
+    Percent,
+    Indexed,
+}
+
+impl Default for ViewportScaleMode {
+    fn default() -> Self {
+        ViewportScaleMode::Price
+    }
+}
+
 /// Viewport state
 #[derive(Debug, Clone)]
 pub struct Viewport {
@@ -49,6 +64,12 @@ pub struct Viewport {
     pub bar_spacing_extra: f64,
     /// Explicit bar body ratio (0.0 = auto, otherwise overrides computed ratio)
     pub bar_width_ratio: f64,
+    /// Timezone offset in minutes from UTC (e.g. 60 = UTC+1, -300 = UTC-5)
+    pub timezone_offset_minutes: i32,
+    /// Price scale display mode
+    pub scale_mode: ViewportScaleMode,
+    /// Base price for percent/indexed modes (first visible candle close)
+    pub scale_base_price: f64,
 }
 
 impl Viewport {
@@ -70,6 +91,9 @@ impl Viewport {
             price_locked: false,
             bar_spacing_extra: 0.0,
             bar_width_ratio: 0.0,
+            timezone_offset_minutes: 0,
+            scale_mode: ViewportScaleMode::Price,
+            scale_base_price: 0.0,
         }
     }
 
