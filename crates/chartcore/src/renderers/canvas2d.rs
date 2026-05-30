@@ -134,6 +134,26 @@ impl Canvas2DRenderer {
                 self.draw_indicator_line(points, color, *width, style);
             }
 
+            RenderCommand::DrawCircle {
+                x,
+                y,
+                radius,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
+                self.draw_circle_shape(*x, *y, *radius, fill, stroke, *stroke_width);
+            }
+
+            RenderCommand::DrawPolygon {
+                points,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
+                self.draw_polygon(points, fill, stroke, *stroke_width);
+            }
+
             RenderCommand::SetClip {
                 x,
                 y,
@@ -452,12 +472,72 @@ impl Canvas2DRenderer {
         }
     }
 
+    fn draw_circle_shape(
+        &mut self,
+        x: f64,
+        y: f64,
+        radius: f64,
+        fill: &Option<Color>,
+        stroke: &Option<Color>,
+        stroke_width: f64,
+    ) {
+        let pr = self.pixel_ratio;
+        self.ctx.begin_path();
+        self.ctx
+            .arc(x * pr, y * pr, radius * pr, 0.0, 2.0 * std::f64::consts::PI)
+            .ok();
+        if let Some(c) = fill {
+            self.ctx.set_fill_style_str(&c.to_css());
+            self.ctx.fill();
+        }
+        if let Some(c) = stroke {
+            self.ctx.set_stroke_style_str(&c.to_css());
+            self.ctx.set_line_width(stroke_width * pr);
+            self.ctx.stroke();
+        }
+    }
+
+    fn draw_polygon(
+        &mut self,
+        points: &[(f32, f32)],
+        fill: &Option<Color>,
+        stroke: &Option<Color>,
+        stroke_width: f64,
+    ) {
+        if points.len() < 3 {
+            return;
+        }
+        let pr = self.pixel_ratio;
+        self.ctx.begin_path();
+        self.ctx
+            .move_to(points[0].0 as f64 * pr, points[0].1 as f64 * pr);
+        for p in &points[1..] {
+            self.ctx.line_to(p.0 as f64 * pr, p.1 as f64 * pr);
+        }
+        self.ctx.close_path();
+        if let Some(c) = fill {
+            self.ctx.set_fill_style_str(&c.to_css());
+            self.ctx.fill();
+        }
+        if let Some(c) = stroke {
+            self.ctx.set_stroke_style_str(&c.to_css());
+            self.ctx.set_line_width(stroke_width * pr);
+            self.ctx.stroke();
+        }
+    }
+
     /// Resize the canvas
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.canvas
-            .set_width((width as f64 * self.pixel_ratio) as u32);
-        self.canvas
-            .set_height((height as f64 * self.pixel_ratio) as u32);
+        let new_w = (width as f64 * self.pixel_ratio) as u32;
+        let new_h = (height as f64 * self.pixel_ratio) as u32;
+        // Setting canvas width/height always clears its content, even when the
+        // value is unchanged. Skip the write when nothing actually changed so
+        // the render loop does not blank an already-rendered frame.
+        if self.canvas.width() == new_w && self.canvas.height() == new_h {
+            return;
+        }
+        self.canvas.set_width(new_w);
+        self.canvas.set_height(new_h);
     }
 }
 

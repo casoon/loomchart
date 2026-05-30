@@ -138,7 +138,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
     </style>
   </head>
 
-  <body class="dark h-full flex flex-col" x-data="demoApp()" x-init="init()">
+  <body class="dark h-full flex flex-col" x-data="demoApp()">
 
     <!-- ── Row 1: Header (brand / symbol / timeframes / global) ── -->
     <header class="flex items-center gap-2 px-3 shrink-0 border-b select-none"
@@ -242,7 +242,18 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
     <!-- Layouts popover -->
     <div class="popover" x-show="layoutsOpen" x-cloak x-on:click.outside="layoutsOpen = false">
-      <h4>Save current layout</h4>
+      <h4>Chart settings</h4>
+      <div class="popover-row" style="border:none;flex-direction:column;align-items:flex-start;gap:4px">
+        <label style="font-size:11px;color:var(--muted)">
+          Bar spacing&nbsp;
+          <span x-text="barSpacing + 'px'" style="color:var(--fg)"></span>
+        </label>
+        <input type="range" min="2" max="50" step="1"
+               x-model.number="barSpacing"
+               x-on:input="setBarSpacing(barSpacing)"
+               style="width:100%;accent-color:var(--accent)">
+      </div>
+      <h4 style="margin-top:8px">Save current layout</h4>
       <div class="popover-row" style="border:none">
         <input class="popover-input" type="text" placeholder="My layout"
                x-model="layoutNameInput"
@@ -434,6 +445,34 @@ const lastCandleJson = JSON.stringify(lastCandle);
             <line x1="2" y1="13" x2="14" y2="3"/>
             <circle cx="2" cy="13" r="1.5" fill="currentColor" stroke="none"/>
             <circle cx="14" cy="3" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+
+        <button class="tool-btn" title="Rectangle — click two corners"
+                x-on:click="setDrawTool('rectangle')"
+                x-bind:class="drawTool === 'rectangle' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="4" width="12" height="8" rx="0.5"/>
+          </svg>
+        </button>
+
+        <button class="tool-btn" title="Fibonacci Retracement — click high, then low"
+                x-on:click="setDrawTool('fibonacci')"
+                x-bind:class="drawTool === 'fibonacci' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
+            <line x1="1" y1="3" x2="15" y2="3"/>
+            <line x1="1" y1="7" x2="15" y2="7"/>
+            <line x1="1" y1="10" x2="15" y2="10"/>
+            <line x1="1" y1="13" x2="15" y2="13"/>
+            <text x="1" y="2.5" style="font-size:4px;fill:currentColor;stroke:none">fib</text>
+          </svg>
+        </button>
+
+        <button class="tool-btn" title="Text Label — click to place"
+                x-on:click="setDrawTool('textlabel')"
+                x-bind:class="drawTool === 'textlabel' ? 'active' : ''">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <text x="2" y="13" style="font-size:11px;font-weight:700;font-family:serif">T</text>
           </svg>
         </button>
 
@@ -818,6 +857,39 @@ const lastCandleJson = JSON.stringify(lastCandle);
               this._trendStart = null;
               this.onDrawingPlaced?.("done");
             }
+          } else if (this.drawingMode === "rectangle") {
+            if (!this._trendStart) {
+              this._trendStart = { time, price };
+              this.onDrawingPlaced?.("rectangle-step1");
+            } else {
+              this._wasm((c) => c.createRectangle(
+                `rect-${++this._toolCount}`,
+                BigInt(this._trendStart.time), this._trendStart.price,
+                BigInt(time), price
+              ));
+              this._trendStart = null;
+              this.onDrawingPlaced?.("done");
+            }
+          } else if (this.drawingMode === "fibonacci") {
+            if (!this._trendStart) {
+              this._trendStart = { time, price };
+              this.onDrawingPlaced?.("fibonacci-step1");
+            } else {
+              this._wasm((c) => c.createFibonacci(
+                `fib-${++this._toolCount}`,
+                BigInt(this._trendStart.time), this._trendStart.price,
+                BigInt(time), price
+              ));
+              this._trendStart = null;
+              this.onDrawingPlaced?.("done");
+            }
+          } else if (this.drawingMode === "textlabel" && price != null) {
+            const text = prompt("Label text:", "Note") || "Note";
+            this._wasm((c) => c.createTextLabel(
+              `lbl-${++this._toolCount}`,
+              BigInt(time), price, text
+            ));
+            this.onDrawingPlaced?.("done");
           } else if (this.drawingMode === "alert" && price != null) {
             // Notify Alpine component which owns the alerts state
             this.onAlertPlace?.(price);
@@ -901,7 +973,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 if (this._pendingResize) {
                   const { w, h } = this._pendingResize;
                   this._pendingResize = null;
-                  if (w > 0 && h > 0) this.chart.resize(w, h);
+                  if (w > 0 && h > 0) {
+                    this.chart.resize(w, h);
+                    // resize() may clear the canvas; fitToData() re-marks dirty
+                    // so the render() below actually redraws the frame.
+                    if (this._candleCache?.length) this.chart.fitToData?.();
+                  }
                 }
                 this.chart.render();
               } catch (err) {
@@ -1516,6 +1593,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
           savedLayouts:  [],
           layoutNameInput: "",
 
+          // Bar spacing (chart settings)
+          barSpacing:    0,
+
           // Symbol search / watchlist (#31, #32)
           symbolsOpen:    false,
           symbolQuery:    "",
@@ -1533,7 +1613,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.onCrosshair = (info) => this._updateOhlcv(info);
             this.chart.onAlertPlace = (price) => this.addAlertAt(price);
             this.chart.onDrawingPlaced = (ev) => {
-              if (ev === "trendline-step1") { this.trendStep = 2; return; }
+              if (ev === "trendline-step1" || ev === "rectangle-step1" || ev === "fibonacci-step1") {
+                this.trendStep = 2; return;
+              }
               this.drawTool = "pointer";
               this.trendStep = 1;
               this.chart.drawingMode = null;
@@ -1555,6 +1637,22 @@ const lastCandleJson = JSON.stringify(lastCandle);
             }
 
             document.addEventListener("keydown", (e) => {
+              // Undo/Redo — fires unless user is in an input field
+              if (e.ctrlKey || e.metaKey) {
+                const tag = e.target?.tagName?.toUpperCase();
+                if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+                  if (e.key === "z" && !e.shiftKey) {
+                    e.preventDefault();
+                    this.chart._wasm(c => c.undo?.());
+                    return;
+                  }
+                  if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+                    e.preventDefault();
+                    this.chart._wasm(c => c.redo?.());
+                    return;
+                  }
+                }
+              }
               if (e.target !== document.body && e.target.tagName !== "BODY") return;
               if (e.key === "f" || e.key === "F") this.fitToData();
               if (e.key === "l" || e.key === "L") this.toggleLogScale();
@@ -1624,15 +1722,22 @@ const lastCandleJson = JSON.stringify(lastCandle);
           clearTools() { this.chart?.clearTools(); this.setDrawTool("pointer"); },
 
           drawHintText() {
-            if (this.drawTool === "hline")     return "Click to place horizontal line";
-            if (this.drawTool === "vline")     return "Click to place vertical line";
-            if (this.drawTool === "trendline") return this.trendStep === 1
+            if (this.drawTool === "hline")      return "Click to place horizontal line";
+            if (this.drawTool === "vline")      return "Click to place vertical line";
+            if (this.drawTool === "trendline")  return this.trendStep === 1
               ? "Click to set start point" : "Click to set end point";
-            if (this.drawTool === "alert")     return "Click to set price alert";
+            if (this.drawTool === "rectangle")  return this.trendStep === 1
+              ? "Click to set first corner" : "Click to set opposite corner";
+            if (this.drawTool === "fibonacci")  return this.trendStep === 1
+              ? "Click to set high point" : "Click to set low point";
+            if (this.drawTool === "textlabel")  return "Click to place text label";
+            if (this.drawTool === "alert")      return "Click to set price alert";
             return "";
           },
 
           fitToData() { this.chart?.fitToData(); },
+
+          setBarSpacing(px) { this.chart?._wasm(c => c.setBarSpacing?.(px)); },
 
           toggleLogScale() {
             this.logScale = !this.logScale;

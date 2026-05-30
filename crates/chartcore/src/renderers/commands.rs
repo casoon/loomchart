@@ -73,6 +73,24 @@ pub enum RenderCommand {
         style: LineStyle,
     },
 
+    /// Draw a circle
+    DrawCircle {
+        x: f64,
+        y: f64,
+        radius: f64,
+        fill: Option<Color>,
+        stroke: Option<Color>,
+        stroke_width: f64,
+    },
+
+    /// Draw a filled/stroked polygon
+    DrawPolygon {
+        points: Vec<(f32, f32)>,
+        fill: Option<Color>,
+        stroke: Option<Color>,
+        stroke_width: f64,
+    },
+
     /// Set clipping region
     SetClip {
         x: f64,

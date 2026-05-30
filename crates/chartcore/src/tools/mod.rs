@@ -4,12 +4,18 @@ use crate::rendering::Canvas2DRenderer;
 use crate::Color;
 use serde::{Deserialize, Serialize};
 
+pub mod fibonacci_retracement;
 pub mod horizontal_line;
+pub mod rectangle;
+pub mod text_label;
 pub mod trendline;
 pub mod vertical_line;
 
 // Re-export tool types for convenience
+pub use fibonacci_retracement::FibonacciRetracement;
 pub use horizontal_line::HorizontalLine;
+pub use rectangle::Rectangle;
+pub use text_label::TextLabel;
 pub use trendline::TrendLine;
 pub use vertical_line::VerticalLine;
 
@@ -32,6 +38,9 @@ pub enum ToolType {
     TrendLine,
     HorizontalLine,
     VerticalLine,
+    Rectangle,
+    FibonacciRetracement,
+    TextLabel,
 }
 
 /// Base trait for all drawing tools
@@ -300,6 +309,21 @@ impl ToolManager {
                 ToolType::VerticalLine => {
                     let t: VerticalLine = serde_json::from_value(env.data)
                         .map_err(|e| format!("VerticalLine deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::Rectangle => {
+                    let t: Rectangle = serde_json::from_value(env.data)
+                        .map_err(|e| format!("Rectangle deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::FibonacciRetracement => {
+                    let t: FibonacciRetracement = serde_json::from_value(env.data)
+                        .map_err(|e| format!("FibonacciRetracement deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::TextLabel => {
+                    let t: TextLabel = serde_json::from_value(env.data)
+                        .map_err(|e| format!("TextLabel deserialization error: {}", e))?;
                     Box::new(t)
                 }
             };

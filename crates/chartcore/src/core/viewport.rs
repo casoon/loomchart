@@ -45,6 +45,10 @@ pub struct Viewport {
     pub log_scale: bool,
     /// When true, fit_to_data() leaves the price range unchanged
     pub price_locked: bool,
+    /// Extra CSS pixels added to every bar's slot width (positive = wider)
+    pub bar_spacing_extra: f64,
+    /// Explicit bar body ratio (0.0 = auto, otherwise overrides computed ratio)
+    pub bar_width_ratio: f64,
 }
 
 impl Viewport {
@@ -64,6 +68,8 @@ impl Viewport {
             timeframe: Timeframe::M5,
             log_scale: false,
             price_locked: false,
+            bar_spacing_extra: 0.0,
+            bar_width_ratio: 0.0,
         }
     }
 
@@ -185,15 +191,14 @@ impl Viewport {
             .collect()
     }
 
-    /// Get bar width in pixels
+    /// Get bar slot width in CSS pixels
     pub fn bar_width(&self) -> f64 {
         let time_range = (self.time.end - self.time.start) as f64;
         let bar_duration = self.timeframe.duration_ms() as f64 / 1000.0;
         let bars_visible = time_range / bar_duration;
 
-        (self.dimensions.width as f64 / bars_visible)
-            .max(1.0)
-            .min(50.0)
+        let base = self.dimensions.width as f64 / bars_visible;
+        (base + self.bar_spacing_extra).max(1.0).min(200.0)
     }
 
     /// Get number of visible bars

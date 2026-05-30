@@ -77,6 +77,13 @@ export class WasmChart {
    */
   setLogScale(enabled: boolean): void;
   /**
+   * Merge new candles into the existing dataset (delegates to CandleBuffer::append).
+   *
+   * Existing candles are kept; incoming candles are sorted and deduped.
+   * Duplicate timestamps are overwritten by the incoming value.
+   */
+  appendCandles(candles_json: string): void;
+  /**
    * End time scaling - user released mouse
    */
   endTimeScale(): void;
@@ -101,6 +108,10 @@ export class WasmChart {
    */
   endPriceScale(): void;
   /**
+   * Get current bar spacing extra value
+   */
+  getBarSpacing(): number;
+  /**
    * Query current price axis lock state
    */
   isPriceLocked(): boolean;
@@ -108,6 +119,18 @@ export class WasmChart {
    * Handle double click event
    */
   onDoubleClick(x: number, y: number): void;
+  /**
+   * Set additional bar spacing in CSS pixels (positive = wider bars, negative = narrower)
+   */
+  setBarSpacing(extra_px: number): void;
+  /**
+   * Create a Fibonacci retracement drawing tool
+   */
+  createFibonacci(id: string, t1: bigint, p1: number, t2: bigint, p2: number): void;
+  /**
+   * Create a rectangle drawing tool
+   */
+  createRectangle(id: string, t1: bigint, p1: number, t2: bigint, p2: number): void;
   /**
    * Reset time scale to fit all data (double-click)
    */
@@ -126,6 +149,10 @@ export class WasmChart {
    */
   startTimeScale(x: number): void;
   /**
+   * Create a text label drawing tool
+   */
+  createTextLabel(id: string, time: bigint, price: number, text: string): void;
+  /**
    * Create a new trend line tool
    */
   createTrendLine(id: string, start_time: bigint, start_price: number, end_time: bigint, end_price: number): void;
@@ -137,6 +164,13 @@ export class WasmChart {
    * Reset price scale to auto-fit data (double-click)
    */
   resetPriceScale(): void;
+  /**
+   * Replace all candles (delegates to CandleBuffer::snapshot).
+   *
+   * Backward-compatible alias for `setCandles`; both methods accept the
+   * same JSON format.
+   */
+  setCandlesBatch(candles_json: string): void;
   /**
    * Start price scaling - user pressed mouse on price axis
    */
@@ -150,9 +184,21 @@ export class WasmChart {
    */
   getOHLCFormatted(): any;
   /**
+   * Set bar width ratio (0.0 = auto, 0.1–0.95 = explicit fraction of slot)
+   */
+  setBarWidthRatio(ratio: number): void;
+  /**
    * Create a new vertical line tool
    */
   createVerticalLine(id: string, time: bigint): void;
+  /**
+   * Upsert a single candle by timestamp (delegates to CandleBuffer::update_running).
+   *
+   * Accepts a JSON object representing one candle.  If a candle with the
+   * same `time` already exists it is replaced in-place; otherwise it is
+   * inserted at the correct sorted position.
+   */
+  updateRunningCandle(candle_json: string): void;
   /**
    * Create a new horizontal line tool
    */
@@ -165,6 +211,14 @@ export class WasmChart {
    * Create a new chart instance
    */
   constructor(width: number, height: number, timeframe: string);
+  /**
+   * Redo the last undone drawing action. Returns true if there was something to redo.
+   */
+  redo(): boolean;
+  /**
+   * Undo the last drawing action. Returns true if there was something to undo.
+   */
+  undo(): boolean;
   /**
    * Render the chart
    */
@@ -572,14 +626,19 @@ export interface InitOutput {
   readonly getAllIndicators: (a: number) => void;
   readonly getIndicatorMetadata: (a: number, b: number) => number;
   readonly wasmchart_addCandle: (a: number, b: bigint, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly wasmchart_appendCandles: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_attachCanvas: (a: number, b: number, c: number) => void;
   readonly wasmchart_clearTools: (a: number, b: number) => void;
+  readonly wasmchart_createFibonacci: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: number) => void;
   readonly wasmchart_createHorizontalLine: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly wasmchart_createRectangle: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: number) => void;
+  readonly wasmchart_createTextLabel: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: number, h: number) => void;
   readonly wasmchart_createTrendLine: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: number) => void;
   readonly wasmchart_createVerticalLine: (a: number, b: number, c: number, d: number, e: bigint) => void;
   readonly wasmchart_endPriceScale: (a: number, b: number) => void;
   readonly wasmchart_exportState: (a: number, b: number) => void;
   readonly wasmchart_fitToData: (a: number) => void;
+  readonly wasmchart_getBarSpacing: (a: number) => number;
   readonly wasmchart_getCandleAtPosition: (a: number, b: number, c: number) => number;
   readonly wasmchart_getCandles: (a: number, b: number) => void;
   readonly wasmchart_getCrosshairInfo: (a: number) => number;
@@ -601,6 +660,7 @@ export interface InitOutput {
   readonly wasmchart_onTouchEnd: (a: number, b: number, c: number) => void;
   readonly wasmchart_onTouchMove: (a: number, b: number, c: number) => void;
   readonly wasmchart_onTouchStart: (a: number, b: number, c: number) => void;
+  readonly wasmchart_redo: (a: number) => number;
   readonly wasmchart_removeTool: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_render: (a: number, b: number) => void;
   readonly wasmchart_resetPriceScale: (a: number, b: number) => void;
@@ -608,13 +668,18 @@ export interface InitOutput {
   readonly wasmchart_resize: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_scalePriceTo: (a: number, b: number, c: number) => void;
   readonly wasmchart_scaleTimeTo: (a: number, b: number, c: number) => void;
+  readonly wasmchart_setBarSpacing: (a: number, b: number) => void;
+  readonly wasmchart_setBarWidthRatio: (a: number, b: number) => void;
   readonly wasmchart_setCandleStyle: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setCandles: (a: number, b: number, c: number, d: number) => void;
+  readonly wasmchart_setCandlesBatch: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setLogScale: (a: number, b: number) => void;
   readonly wasmchart_setPriceLocked: (a: number, b: number) => void;
   readonly wasmchart_setTheme: (a: number, b: number) => void;
   readonly wasmchart_startPriceScale: (a: number, b: number, c: number) => void;
   readonly wasmchart_startTimeScale: (a: number, b: number, c: number) => void;
+  readonly wasmchart_undo: (a: number) => number;
+  readonly wasmchart_updateRunningCandle: (a: number, b: number, c: number, d: number) => void;
   readonly wasmlempelzivcomplexity_calculate: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly wasmlempelzivcomplexity_len: (a: number) => number;
   readonly wasmlempelzivcomplexity_new: (a: number, b: number) => number;
@@ -631,9 +696,9 @@ export interface InitOutput {
   readonly wasmshannonentropy_next: (a: number, b: number) => number;
   readonly wasmshannonentropy_reset: (a: number) => void;
   readonly wasmchart_endTimeScale: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_368: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_111: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_367: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_359: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_110: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_358: (a: number, b: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export3: (a: number) => void;

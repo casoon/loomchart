@@ -21,6 +21,8 @@ pub struct WasmChart {
     state: ChartState,
     event_handler: EventHandler,
     renderer: Option<Canvas2DRenderer>,
+    undo_stack: Vec<String>,
+    redo_stack: Vec<String>,
 }
 
 #[cfg(feature = "wasm")]
@@ -40,6 +42,8 @@ impl WasmChart {
             state: ChartState::new(width, height, tf),
             event_handler: EventHandler::new(),
             renderer: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         })
     }
 
@@ -536,7 +540,11 @@ impl WasmChart {
             let unchanged_color = self.state.options.unchanged_color;
 
             // Calculate optimal candlestick width using TradingView algorithm
-            let optimal_width = optimal_candlestick_width(bar_spacing, pixel_ratio);
+            let optimal_width = if vp.bar_width_ratio > 0.0 {
+                bar_spacing * pixel_ratio * vp.bar_width_ratio
+            } else {
+                optimal_candlestick_width(bar_spacing, pixel_ratio)
+            };
             let (bar_width, _line_width) = symmetric_bar_width(optimal_width, pixel_ratio, false);
 
             web_sys::console::log_1(
@@ -659,6 +667,57 @@ impl WasmChart {
         self.state.is_dirty()
     }
 
+    // ========== Undo/Redo API ==========
+
+    fn _snapshot_tools(&self) -> String {
+        self.state.tool_manager.to_json().unwrap_or_default()
+    }
+
+    fn _push_undo(&mut self) {
+        let snap = self._snapshot_tools();
+        self.undo_stack.push(snap);
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Undo the last drawing action. Returns true if there was something to undo.
+    #[wasm_bindgen(js_name = undo)]
+    pub fn undo(&mut self) -> bool {
+        let Some(snap) = self.undo_stack.pop() else {
+            return false;
+        };
+        let current = self._snapshot_tools();
+        self.redo_stack.push(current);
+        if self.redo_stack.len() > 50 {
+            self.redo_stack.remove(0);
+        }
+        if let Ok(manager) = crate::tools::ToolManager::from_json(&snap) {
+            self.state.tool_manager = manager;
+            self.state.mark_dirty();
+        }
+        true
+    }
+
+    /// Redo the last undone drawing action. Returns true if there was something to redo.
+    #[wasm_bindgen(js_name = redo)]
+    pub fn redo(&mut self) -> bool {
+        let Some(snap) = self.redo_stack.pop() else {
+            return false;
+        };
+        let current = self._snapshot_tools();
+        self.undo_stack.push(current);
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.remove(0);
+        }
+        if let Ok(manager) = crate::tools::ToolManager::from_json(&snap) {
+            self.state.tool_manager = manager;
+            self.state.mark_dirty();
+        }
+        true
+    }
+
     // ========== Drawing Tools API ==========
 
     /// Create a new trend line tool
@@ -672,6 +731,8 @@ impl WasmChart {
         end_price: f64,
     ) -> Result<(), JsValue> {
         use crate::tools::{ToolNode, TrendLine};
+
+        self._push_undo();
 
         let start_node = ToolNode {
             time: start_time,
@@ -695,6 +756,7 @@ impl WasmChart {
     pub fn create_horizontal_line(&mut self, id: &str, price: f64) -> Result<(), JsValue> {
         use crate::tools::HorizontalLine;
 
+        self._push_undo();
         let tool = HorizontalLine::with_price(id.to_string(), 0, price);
         self.state.tool_manager.add_tool(Box::new(tool));
         self.state.mark_dirty();
@@ -707,6 +769,7 @@ impl WasmChart {
     pub fn create_vertical_line(&mut self, id: &str, time: i64) -> Result<(), JsValue> {
         use crate::tools::VerticalLine;
 
+        self._push_undo();
         let tool = VerticalLine::with_time(id.to_string(), time, 0.0);
         self.state.tool_manager.add_tool(Box::new(tool));
         self.state.mark_dirty();
@@ -717,6 +780,7 @@ impl WasmChart {
     /// Remove a tool by ID
     #[wasm_bindgen(js_name = removeTool)]
     pub fn remove_tool(&mut self, id: &str) -> Result<(), JsValue> {
+        self._push_undo();
         self.state.tool_manager.remove_tool(id);
         self.state.mark_dirty();
         Ok(())
@@ -725,9 +789,97 @@ impl WasmChart {
     /// Clear all tools
     #[wasm_bindgen(js_name = clearTools)]
     pub fn clear_tools(&mut self) -> Result<(), JsValue> {
+        self._push_undo();
         self.state.tool_manager.clear();
         self.state.mark_dirty();
         Ok(())
+    }
+
+    /// Create a rectangle drawing tool
+    #[wasm_bindgen(js_name = createRectangle)]
+    pub fn create_rectangle(
+        &mut self,
+        id: &str,
+        t1: i64,
+        p1: f64,
+        t2: i64,
+        p2: f64,
+    ) -> Result<(), JsValue> {
+        use crate::tools::{Rectangle, ToolNode};
+        self._push_undo();
+        let tool = Rectangle::with_corners(
+            id.to_string(),
+            ToolNode { time: t1, price: p1 },
+            ToolNode { time: t2, price: p2 },
+        );
+        self.state.tool_manager.add_tool(Box::new(tool));
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Create a Fibonacci retracement drawing tool
+    #[wasm_bindgen(js_name = createFibonacci)]
+    pub fn create_fibonacci(
+        &mut self,
+        id: &str,
+        t1: i64,
+        p1: f64,
+        t2: i64,
+        p2: f64,
+    ) -> Result<(), JsValue> {
+        use crate::tools::{FibonacciRetracement, ToolNode};
+        self._push_undo();
+        let tool = FibonacciRetracement::with_points(
+            id.to_string(),
+            ToolNode { time: t1, price: p1 },
+            ToolNode { time: t2, price: p2 },
+        );
+        self.state.tool_manager.add_tool(Box::new(tool));
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Create a text label drawing tool
+    #[wasm_bindgen(js_name = createTextLabel)]
+    pub fn create_text_label(
+        &mut self,
+        id: &str,
+        time: i64,
+        price: f64,
+        text: &str,
+    ) -> Result<(), JsValue> {
+        use crate::tools::{TextLabel, ToolNode};
+        self._push_undo();
+        let tool = TextLabel::new(
+            id.to_string(),
+            ToolNode { time, price },
+            text,
+        );
+        self.state.tool_manager.add_tool(Box::new(tool));
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    // ========== Bar Spacing API ==========
+
+    /// Set additional bar spacing in CSS pixels (positive = wider bars, negative = narrower)
+    #[wasm_bindgen(js_name = setBarSpacing)]
+    pub fn set_bar_spacing(&mut self, extra_px: f64) {
+        self.state.viewport.bar_spacing_extra = extra_px.clamp(-40.0, 200.0);
+        self.state.mark_dirty();
+    }
+
+    /// Set bar width ratio (0.0 = auto, 0.1–0.95 = explicit fraction of slot)
+    #[wasm_bindgen(js_name = setBarWidthRatio)]
+    pub fn set_bar_width_ratio(&mut self, ratio: f64) {
+        self.state.viewport.bar_width_ratio = ratio.clamp(0.0, 0.95);
+        self.state.mark_dirty();
+    }
+
+    /// Get current bar spacing extra value
+    #[wasm_bindgen(js_name = getBarSpacing)]
+    pub fn get_bar_spacing(&self) -> f64 {
+        self.state.viewport.bar_spacing_extra
     }
 
     /// Get all tools as JSON

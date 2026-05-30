@@ -6,6 +6,9 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wasm")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(feature = "wasm")]
+use js_sys;
+
 use super::renderer::{RenderCommand, Renderer, TextAlign, TextBaseline};
 use crate::canvas::{BitmapSpace, CssPixels, DevicePixels, MediaSpace, PixelRatio};
 use crate::primitives::Color;
@@ -403,6 +406,46 @@ impl Renderer for Canvas2DRenderer {
         } else {
             self.fill_rect(body_x, body_top, width, body_height, color);
         }
+    }
+
+    fn draw_indicator_line(
+        &mut self,
+        points: &[(f64, f64)],
+        color: Color,
+        width: f32,
+        style: super::renderer::LineStyle,
+    ) {
+        if points.len() < 2 {
+            return;
+        }
+        let dash_array = js_sys::Array::new();
+        match style {
+            super::renderer::LineStyle::Solid => {
+                self.ctx.set_line_dash(&js_sys::Array::new()).ok();
+            }
+            super::renderer::LineStyle::Dashed {
+                dash_length,
+                gap_length,
+            } => {
+                dash_array.push(&(dash_length as f64).into());
+                dash_array.push(&(gap_length as f64).into());
+                self.ctx.set_line_dash(&dash_array).ok();
+            }
+            super::renderer::LineStyle::Dotted => {
+                dash_array.push(&(2.0_f64).into());
+                dash_array.push(&(3.0_f64).into());
+                self.ctx.set_line_dash(&dash_array).ok();
+            }
+        }
+        self.set_stroke_color(color);
+        self.ctx.set_line_width(width as f64);
+        self.ctx.begin_path();
+        self.ctx.move_to(points[0].0, points[0].1);
+        for &(x, y) in &points[1..] {
+            self.ctx.line_to(x, y);
+        }
+        self.ctx.stroke();
+        self.ctx.set_line_dash(&js_sys::Array::new()).ok();
     }
 
     fn set_clip(&mut self, x: f64, y: f64, width: f64, height: f64) {
