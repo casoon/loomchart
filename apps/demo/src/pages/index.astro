@@ -80,6 +80,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
         padding:4px 12px; border-radius:12px; pointer-events:none;
         white-space:nowrap;
       }
+      #lasso-box {
+        position:absolute; z-index:7; border:1px solid var(--accent);
+        background:rgba(88,166,255,0.14); pointer-events:none;
+      }
 
       /* Layouts dropdown */
       .popover {
@@ -95,6 +99,37 @@ const lastCandleJson = JSON.stringify(lastCandle);
       .popover-input:focus { border-color:var(--accent); }
       .layout-item { flex:1; font-size:11px; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .layout-item small { color:var(--muted); margin-left:4px; }
+      .compare-swatch { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+      .compare-chip {
+        display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 6px;
+        border-radius:4px; background:var(--bg3); color:var(--fg); font-size:11px;
+      }
+      .compare-chip button { border:none; background:transparent; color:var(--muted); cursor:pointer; line-height:1; }
+      .compare-chip button:hover { color:var(--dn); }
+      .indicator-chip {
+        display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 6px;
+        border-radius:4px; background:var(--bg3); color:var(--fg); font-size:11px;
+      }
+      .indicator-chip button { border:none; background:transparent; color:var(--muted); cursor:pointer; line-height:1; }
+      .indicator-chip button:hover { color:var(--fg); }
+      .settings-panel {
+        position:absolute; top:8px; left:8px; z-index:8; width:min(320px, calc(100% - 16px));
+        background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+        box-shadow:0 10px 28px rgba(0,0,0,0.42); padding:10px;
+      }
+      .settings-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+      .settings-title { font-size:12px; font-weight:700; color:var(--fg); }
+      .settings-row { display:grid; grid-template-columns:92px 1fr 54px; gap:8px; align-items:center; padding:6px 0; border-top:1px solid var(--border); }
+      .settings-row label { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .settings-row input[type="range"] { width:100%; accent-color:var(--accent); }
+      .settings-input { width:100%; min-width:0; background:var(--bg); border:1px solid var(--border); color:var(--fg); border-radius:3px; padding:3px 6px; font:inherit; font-size:11px; }
+      .settings-value { width:54px; }
+      .settings-actions { display:flex; justify-content:flex-end; gap:6px; padding-top:8px; border-top:1px solid var(--border); margin-top:4px; }
+      .pane-control {
+        display:flex; align-items:center; gap:6px; height:26px; padding:0 8px;
+        background:var(--bg3); border-left:1px solid var(--border); color:var(--muted); font-size:11px;
+      }
+      .pane-control input { width:68px; accent-color:var(--accent); }
 
       /* Bottom toolbar (replay/playback) */
       .playback-bar {
@@ -276,6 +311,46 @@ const lastCandleJson = JSON.stringify(lastCandle);
       </template>
     </div>
 
+    <!-- Compare symbol popover -->
+    <div class="popover" x-show="compareOpen" x-cloak x-on:click.outside="compareOpen = false"
+         style="top:76px;right:110px;min-width:300px">
+      <h4>Add comparison</h4>
+      <div class="popover-row" style="border:none">
+        <input class="popover-input" type="text" placeholder="Search symbol"
+               x-model="compareQuery"
+               x-on:keydown.enter="addCompareFromInput()">
+        <button class="btn btn-ghost scale-btn"
+                x-on:click="addCompareFromInput()"
+                x-bind:disabled="compareSymbols.length >= 3">Add</button>
+      </div>
+      <template x-if="compareSymbols.length >= 3">
+        <div style="font-size:11px;color:var(--dim);padding:4px 0">Maximum 3 comparison symbols.</div>
+      </template>
+      <h4 style="margin-top:8px">Symbols</h4>
+      <template x-for="s in filteredCompareSymbols()" x-bind:key="s.sym">
+        <div class="popover-row" x-on:click="addCompareSymbol(s.sym)" style="cursor:pointer">
+          <span class="layout-item">
+            <span x-text="s.sym" style="font-weight:600"></span>
+            <small x-text="s.name"></small>
+          </span>
+          <span class="tabular-nums" style="font-size:10px;min-width:42px;text-align:right"
+                x-bind:class="s.ch >= 0 ? 'ohlcv-up' : 'ohlcv-down'"
+                x-text="(s.ch >= 0 ? '+' : '') + s.ch.toFixed(2) + '%'"></span>
+        </div>
+      </template>
+      <template x-if="compareSymbols.length > 0">
+        <div style="padding-top:6px;border-top:1px solid var(--border);margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+          <template x-for="entry in compareSymbols" x-bind:key="entry.symbol">
+            <span class="compare-chip">
+              <span class="compare-swatch" x-bind:style="'background:' + entry.color"></span>
+              <span x-text="entry.symbol"></span>
+              <button type="button" x-on:click="removeCompareSymbol(entry.symbol)" title="Remove compare">×</button>
+            </span>
+          </template>
+        </div>
+      </template>
+    </div>
+
     <!-- ── Row 2: Toolbar (chart controls / OHLCV) ───────────── -->
     <div class="flex items-center gap-1 px-2 shrink-0 border-b select-none"
          style="height:34px;border-color:var(--border);background:var(--bg2)">
@@ -289,6 +364,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           { id: "ha",          label: "Heikin Ashi" },
           { id: "line",        label: "Line" },
           { id: "area",        label: "Area" },
+          { id: "footprint",   label: "Footprint" },
           { id: "renko",       label: "Renko" },
         ].map(({ id, label }) => (
           <button
@@ -341,37 +417,62 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <!-- Strategy overlay (SMA crossover entries/exits) -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="toggleStrategy()"
+              x-on:dblclick.prevent="openIndicatorSettings('strategy')"
               x-bind:class="showStrategy ? 'active' : ''"
               title="Strategy overlay (S) — SMA crossover entry/exit markers">
         <span>▲▼</span>
         <span>Strategy</span>
+        <span class="btn btn-ghost" x-show="showStrategy" x-on:click.stop="openIndicatorSettings('strategy')" title="Strategy settings">⚙</span>
       </button>
 
       <!-- Divergence detection -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="toggleDivergence()"
+              x-on:dblclick.prevent="openIndicatorSettings('divergence')"
               x-bind:class="showDivergence ? 'active' : ''"
               title="Divergence detection (D) — RSI vs. price divergences">
         <span>↗↘</span>
         <span>Div</span>
+        <span class="btn btn-ghost" x-show="showDivergence" x-on:click.stop="openIndicatorSettings('divergence')" title="Divergence settings">⚙</span>
       </button>
 
       <!-- Patterns -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="togglePatterns()"
+              x-on:dblclick.prevent="openIndicatorSettings('patterns')"
               x-bind:class="showPatterns ? 'active' : ''"
               title="Chart patterns (P) — double top / double bottom detection">
         <span>⋂⋃</span>
         <span>Patterns</span>
+        <span class="btn btn-ghost" x-show="showPatterns" x-on:click.stop="openIndicatorSettings('patterns')" title="Pattern settings">⚙</span>
       </button>
 
       <!-- MTF indicator -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="toggleMTF()"
+              x-on:dblclick.prevent="openIndicatorSettings('mtf')"
               x-bind:class="showMTF ? 'active' : ''"
               title="Multi-timeframe SMA (M) — SMA20 from one timeframe higher">
         <span>MTF</span>
+        <span class="btn btn-ghost" x-show="showMTF" x-on:click.stop="openIndicatorSettings('mtf')" title="MTF settings">⚙</span>
       </button>
+
+      <div class="seg-group" title="Oscillator panes">
+        <button class="seg-btn" x-on:click="toggleOscillatorPane('rsi')" x-bind:class="hasOscillatorPane('rsi') ? 'active' : ''">RSI</button>
+        <button class="seg-btn" x-on:click="toggleOscillatorPane('macd')" x-bind:class="hasOscillatorPane('macd') ? 'active' : ''">MACD</button>
+        <button class="seg-btn" x-on:click="toggleOscillatorPane('stochastic')" x-bind:class="hasOscillatorPane('stochastic') ? 'active' : ''">Stoch</button>
+        <button class="seg-btn" x-on:click="toggleOscillatorPane('cci')" x-bind:class="hasOscillatorPane('cci') ? 'active' : ''">CCI</button>
+        <button class="seg-btn" x-on:click="toggleOscillatorPane('williams_r')" x-bind:class="hasOscillatorPane('williams_r') ? 'active' : ''">W%R</button>
+      </div>
+
+      <template x-if="oscillatorPanes.length > 0">
+        <div class="pane-control">
+          <span x-text="paneSummary()"></span>
+          <input type="range" min="14" max="50" step="1"
+                 x-model.number="indicatorPanePercent"
+                 x-on:input="setIndicatorPanePercent(indicatorPanePercent)">
+        </div>
+      </template>
 
       <!-- News overlay -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
@@ -381,6 +482,22 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>📰</span>
         <span>News</span>
       </button>
+
+      <button class="btn btn-ghost scale-btn flex items-center gap-1"
+              x-on:click="compareOpen = !compareOpen"
+              x-bind:class="compareOpen ? 'active' : ''"
+              title="Add comparison symbol">
+        <span>＋</span>
+        <span>Compare</span>
+      </button>
+
+      <template x-for="entry in compareSymbols" x-bind:key="entry.symbol">
+        <span class="compare-chip">
+          <span class="compare-swatch" x-bind:style="'background:' + entry.color"></span>
+          <span x-text="entry.symbol"></span>
+          <button type="button" x-on:click="removeCompareSymbol(entry.symbol)" title="Remove compare">×</button>
+        </span>
+      </template>
 
       <div class="sep"></div>
 
@@ -524,6 +641,69 @@ const lastCandleJson = JSON.stringify(lastCandle);
           <span x-text="drawHintText()"></span>
         </div>
 
+        <div id="lasso-box" x-show="lasso.active" x-cloak
+             x-bind:style="lassoStyle()"></div>
+
+        <!-- Indicator settings panel -->
+        <div class="settings-panel" x-show="indicatorSettingsOpen && activeIndicatorDef()" x-cloak>
+          <div class="settings-head">
+            <div class="settings-title" x-text="activeIndicatorDef()?.name + ' settings'"></div>
+            <button class="alert-del" x-on:click="indicatorSettingsOpen = false" title="Close">×</button>
+          </div>
+          <template x-for="param in activeIndicatorDef()?.parameters || []" x-bind:key="param.id">
+            <div class="settings-row">
+              <label x-bind:title="param.name" x-text="param.name"></label>
+
+              <template x-if="param.type === 'integer' || param.type === 'float'">
+                <input type="range"
+                       x-bind:min="param.min"
+                       x-bind:max="param.max"
+                       x-bind:step="param.step"
+                       x-bind:value="indicatorValue(activeIndicatorId, param.id)"
+                       x-on:input="setIndicatorParam(activeIndicatorId, param.id, $event.target.value)">
+              </template>
+
+              <template x-if="param.type === 'boolean'">
+                <input type="checkbox"
+                       x-bind:checked="indicatorValue(activeIndicatorId, param.id)"
+                       x-on:change="setIndicatorParam(activeIndicatorId, param.id, $event.target.checked)">
+              </template>
+
+              <template x-if="param.type === 'choice' || param.type === 'source'">
+                <select class="settings-input"
+                        x-bind:value="indicatorValue(activeIndicatorId, param.id)"
+                        x-on:change="setIndicatorParam(activeIndicatorId, param.id, $event.target.value)">
+                  <template x-for="option in param.options" x-bind:key="option">
+                    <option x-bind:value="option" x-text="option"></option>
+                  </template>
+                </select>
+              </template>
+
+              <template x-if="param.type === 'color'">
+                <input class="settings-input" type="color"
+                       x-bind:value="indicatorValue(activeIndicatorId, param.id)"
+                       x-on:input="setIndicatorParam(activeIndicatorId, param.id, $event.target.value)">
+              </template>
+
+              <template x-if="param.type === 'integer' || param.type === 'float'">
+                <input class="settings-input settings-value" type="number"
+                       x-bind:min="param.min"
+                       x-bind:max="param.max"
+                       x-bind:step="param.step"
+                       x-bind:value="indicatorValue(activeIndicatorId, param.id)"
+                       x-on:input="setIndicatorParam(activeIndicatorId, param.id, $event.target.value)">
+              </template>
+              <template x-if="param.type !== 'integer' && param.type !== 'float'">
+                <span></span>
+              </template>
+            </div>
+          </template>
+          <div class="settings-actions">
+            <button class="btn btn-ghost scale-btn" x-on:click="resetIndicatorSettings(activeIndicatorId)">Reset</button>
+            <button class="btn btn-ghost scale-btn" x-on:click="indicatorSettingsOpen = false">Done</button>
+          </div>
+        </div>
+
         <!-- Alerts panel -->
         <div id="alerts-panel" x-show="alerts.length > 0 && !loading">
           <h4>Price alerts</h4>
@@ -645,6 +825,31 @@ const lastCandleJson = JSON.stringify(lastCandle);
         return bricks;
       }
 
+      function makeFootprintCandles(candles) {
+        return candles.map((c, idx) => {
+          const levelCount = 7;
+          const low = c.l;
+          const high = c.h;
+          const span = Math.max(0.01, high - low);
+          const levels = [];
+          for (let i = 0; i < levelCount; i++) {
+            const pos = levelCount === 1 ? 0.5 : i / (levelCount - 1);
+            const price = low + span * pos;
+            const shape = 1 - Math.abs(pos - 0.5) * 1.35;
+            const base = Math.max(8, (c.v || 100) / levelCount * Math.max(0.18, shape));
+            const bias = Math.sin(idx * 0.41 + i * 0.9) * 0.28 + (c.c >= c.o ? 0.12 : -0.12);
+            const ask = base * (1 + bias);
+            const bid = base * (1 - bias);
+            levels.push({
+              price: Math.round(price * 100) / 100,
+              bid_volume: Math.max(1, Math.round(bid)),
+              ask_volume: Math.max(1, Math.round(ask)),
+            });
+          }
+          return { time: c.time, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, levels };
+        });
+      }
+
       let simSeed = 99999;
       function simRand() {
         simSeed = (Math.imul(1664525, simSeed) + 1013904223) | 0;
@@ -666,21 +871,114 @@ const lastCandleJson = JSON.stringify(lastCandle);
         { sym: "XAU/USD",  name: "Gold spot",          last: 2367.45,  ch:  0.45 },
         { sym: "WTI",      name: "Crude Oil",          last: 76.32,    ch: -1.23 },
       ];
+      const COMPARE_COLORS = ["#58a6ff", "#e3b341", "#a371f7"];
+      const INDICATOR_STORAGE_KEY = "loomchart-demo-indicator-settings";
+      const SOURCE_OPTIONS = ["close", "open", "high", "low", "hl2", "hlc3", "ohlc4"];
+      const INDICATOR_DEFS = {
+        strategy: {
+          id: "strategy",
+          name: "Strategy",
+          parameters: [
+            { id: "fastPeriod", name: "Fast", type: "integer", min: 2, max: 50, step: 1, default: 5 },
+            { id: "slowPeriod", name: "Slow", type: "integer", min: 5, max: 200, step: 1, default: 20 },
+            { id: "source", name: "Source", type: "source", options: SOURCE_OPTIONS, default: "close" },
+            { id: "fastColor", name: "Fast color", type: "color", default: "#58a6ff" },
+            { id: "slowColor", name: "Slow color", type: "color", default: "#e3b341" },
+            { id: "showSignals", name: "Signals", type: "boolean", default: true },
+          ],
+        },
+        divergence: {
+          id: "divergence",
+          name: "Divergence",
+          parameters: [
+            { id: "rsiPeriod", name: "RSI period", type: "integer", min: 5, max: 50, step: 1, default: 14 },
+            { id: "pivotLeft", name: "Pivot left", type: "integer", min: 2, max: 10, step: 1, default: 3 },
+            { id: "pivotRight", name: "Pivot right", type: "integer", min: 2, max: 10, step: 1, default: 3 },
+            { id: "source", name: "Source", type: "source", options: SOURCE_OPTIONS, default: "close" },
+            { id: "bullColor", name: "Bull color", type: "color", default: "#3fb950" },
+            { id: "bearColor", name: "Bear color", type: "color", default: "#f85149" },
+          ],
+        },
+        patterns: {
+          id: "patterns",
+          name: "Patterns",
+          parameters: [
+            { id: "pivotLeft", name: "Pivot left", type: "integer", min: 2, max: 10, step: 1, default: 4 },
+            { id: "pivotRight", name: "Pivot right", type: "integer", min: 2, max: 10, step: 1, default: 4 },
+            { id: "tolerance", name: "Tolerance", type: "float", min: 0.005, max: 0.05, step: 0.001, default: 0.015 },
+            { id: "minMove", name: "Min move", type: "float", min: 0.005, max: 0.06, step: 0.001, default: 0.015 },
+            { id: "lineStyle", name: "Line", type: "choice", options: ["solid", "dashed", "dotted"], default: "dashed" },
+            { id: "color", name: "Color", type: "color", default: "#e3b341" },
+          ],
+        },
+        mtf: {
+          id: "mtf",
+          name: "MTF SMA",
+          parameters: [
+            { id: "period", name: "Period", type: "integer", min: 5, max: 100, step: 1, default: 20 },
+            { id: "stepUp", name: "TF step", type: "choice", options: ["1", "2", "3"], default: "2" },
+            { id: "source", name: "Source", type: "source", options: SOURCE_OPTIONS, default: "close" },
+            { id: "color", name: "Color", type: "color", default: "#ff8c00" },
+          ],
+        },
+      };
+
+      function symbolSeed(symbol) {
+        let hash = 0;
+        for (let i = 0; i < symbol.length; i++) {
+          hash = Math.imul(hash ^ symbol.charCodeAt(i), 16777619);
+        }
+        return hash >>> 0;
+      }
+
+      function makeCompareCandles(symbol, timeframe) {
+        const base = ALL_CANDLES[timeframe] || [];
+        if (!base.length) return [];
+        const info = MOCK_SYMBOLS.find((s) => s.sym === symbol);
+        const start = Math.max(0.0001, info?.last || base[0].c);
+        const seed = symbolSeed(symbol);
+        const phase = (seed % 360) * Math.PI / 180;
+        const drift = ((seed % 200) - 100) / 100000;
+        const amp = 0.018 + ((seed >> 8) % 18) / 1000;
+        const scale = start / base[0].c;
+
+        return base.map((c, idx) => {
+          const wave = Math.sin(idx * 0.17 + phase) * amp;
+          const trend = drift * idx;
+          const noise = Math.sin(idx * 0.071 + phase * 0.5) * amp * 0.35;
+          const factor = Math.max(0.15, scale * (1 + trend + wave + noise));
+          const close = c.c * factor;
+          const open = c.o * factor;
+          const high = Math.max(open, close, c.h * factor * (1 + amp * 0.18));
+          const low = Math.min(open, close, c.l * factor * (1 - amp * 0.18));
+          return { time: c.time, o: open, h: high, l: low, c: close, v: c.v };
+        });
+      }
+
+      function candleSource(candle, source = "close") {
+        if (source === "open") return candle.o;
+        if (source === "high") return candle.h;
+        if (source === "low") return candle.l;
+        if (source === "hl2") return (candle.h + candle.l) / 2;
+        if (source === "hlc3") return (candle.h + candle.l + candle.c) / 3;
+        if (source === "ohlc4") return (candle.o + candle.h + candle.l + candle.c) / 4;
+        return candle.c;
+      }
 
       // Wilder's RSI(period) over candle closes; returns array same length as input, with leading nulls
-      function computeRSI(candles, period = 14) {
+      function computeRSI(candles, period = 14, source = "close") {
         const n = candles.length;
         const rsi = new Array(n).fill(null);
         if (n <= period) return rsi;
         let gain = 0, loss = 0;
         for (let i = 1; i <= period; i++) {
-          const d = candles[i].c - candles[i - 1].c;
+          const d = candleSource(candles[i], source) - candleSource(candles[i - 1], source);
           if (d >= 0) gain += d; else loss -= d;
         }
         let avgG = gain / period, avgL = loss / period;
         rsi[period] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
         for (let i = period + 1; i < n; i++) {
-          const d = candles[i].c - candles[i - 1].c;
+          const d = candleSource(candles[i], source) - candleSource(candles[i - 1], source);
           const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
           avgG = (avgG * (period - 1) + g) / period;
           avgL = (avgL * (period - 1) + l) / period;
@@ -748,6 +1046,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this._inWasm = false;
           this._pendingResize = null;
           this._resizeObserver = null;
+          this.onLassoStart = null;
+          this.onLassoMove = null;
+          this.onLassoEnd = null;
+          this._selectedDrag = false;
         }
 
         // Run a WASM call behind the re-entrancy guard. Calls attempted while
@@ -902,6 +1204,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
           el.addEventListener("mousemove", (e) => {
             const {x,y} = this._coords(e);
+            if (this._selectedDrag) {
+              this._wasm((c) => c.dragSelectedDrawingsTo?.(x, y));
+              return;
+            }
+            if (this.onLassoMove?.(x, y)) return;
             const info = this._wasm((c) => {
               c.onMouseMove(x, y);
               return c.getCrosshairInfo?.();
@@ -915,11 +1222,26 @@ const lastCandleJson = JSON.stringify(lastCandle);
           el.addEventListener("mousedown", (e) => {
             const {x,y} = this._coords(e);
             if (this.drawingMode) { this._handleDrawClick(x, y); return; }
+            if (e.button === 0) {
+              const hit = this._wasm((c) => c.selectDrawingAt?.(x, y, e.shiftKey)) ?? false;
+              if (hit) {
+                this._selectedDrag = this._wasm((c) => c.startSelectedDrawingsDrag?.(x, y)) ?? false;
+                return;
+              }
+              this.onLassoStart?.(x, y, e.shiftKey);
+              return;
+            }
             this._wasm((c) => c.onMouseDown(x, y, e.button));
           });
           el.addEventListener("mouseup", (e) => {
             if (this.drawingMode) return;
             const {x,y} = this._coords(e);
+            if (this._selectedDrag) {
+              this._wasm((c) => c.endSelectedDrawingsDrag?.());
+              this._selectedDrag = false;
+              return;
+            }
+            if (this.onLassoEnd?.(x, y)) return;
             this._wasm((c) => c.onMouseUp(x, y, e.button));
           });
           el.addEventListener("wheel", (e) => {
@@ -1100,8 +1422,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this._overlayDirty = true;
         }
 
-        setStrategy(on) {
+        setStrategy(on, params) {
           this.showStrategy = !!on;
+          if (params) this.strategyParams = params;
           this._overlayDirty = true;
         }
 
@@ -1121,17 +1444,23 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
           const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
 
+          const params = this.strategyParams || {};
+          const FAST = Math.max(2, Number(params.fastPeriod || 5));
+          const SLOW = Math.max(FAST + 1, Number(params.slowPeriod || 20));
+          const source = params.source || "close";
+          const fastColor = params.fastColor || "#58a6ff";
+          const slowColor = params.slowColor || "#e3b341";
+          const showSignals = params.showSignals !== false;
           // Compute SMAs incrementally
-          const FAST = 5, SLOW = 20;
           const fast = new Array(candles.length);
           const slow = new Array(candles.length);
           let sumF = 0, sumS = 0;
           for (let i = 0; i < candles.length; i++) {
-            sumF += candles[i].c;
-            if (i >= FAST) sumF -= candles[i - FAST].c;
+            sumF += candleSource(candles[i], source);
+            if (i >= FAST) sumF -= candleSource(candles[i - FAST], source);
             if (i >= FAST - 1) fast[i] = sumF / FAST;
-            sumS += candles[i].c;
-            if (i >= SLOW) sumS -= candles[i - SLOW].c;
+            sumS += candleSource(candles[i], source);
+            if (i >= SLOW) sumS -= candleSource(candles[i - SLOW], source);
             if (i >= SLOW - 1) slow[i] = sumS / SLOW;
           }
 
@@ -1159,12 +1488,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
             ctx.stroke();
           };
 
-          drawLine(buildLine(fast), "rgba(88,166,255,0.85)", 1.5);
-          drawLine(buildLine(slow), "rgba(227,179,65,0.85)", 1.5);
+          drawLine(buildLine(fast), fastColor, 1.5);
+          drawLine(buildLine(slow), slowColor, 1.5);
 
           // Find crossovers and draw entry/exit markers
           let lastSig = null;
-          for (let i = SLOW; i < candles.length; i++) {
+          for (let i = SLOW; showSignals && i < candles.length; i++) {
             const t = candles[i].time;
             if (t < tStart || t > tEnd) continue;
             const prevD = (fast[i-1] ?? 0) - (slow[i-1] ?? 0);
@@ -1216,12 +1545,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
           ctx.font = "10px ui-monospace, monospace";
           ctx.textAlign = "left";
           ctx.textBaseline = "top";
-          ctx.fillStyle = "rgba(88,166,255,0.9)";
-          ctx.fillText("— SMA 5",  8, 8);
-          ctx.fillStyle = "rgba(227,179,65,0.9)";
-          ctx.fillText("— SMA 20", 8, 22);
+          ctx.fillStyle = fastColor;
+          ctx.fillText(`— SMA ${FAST}`,  8, 8);
+          ctx.fillStyle = slowColor;
+          ctx.fillText(`— SMA ${SLOW}`, 8, 22);
           ctx.fillStyle = "rgba(150,160,170,0.7)";
-          ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
+          if (showSignals) ctx.fillText("▲ Buy  ▼ Sell", 8, 36);
         }
 
         _drawNews() {
@@ -1276,9 +1605,23 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
           const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+          const params = this.patternParams || {};
+          const pivotLeft = Number(params.pivotLeft || 4);
+          const pivotRight = Number(params.pivotRight || 4);
+          const tolerance = Number(params.tolerance || 0.015);
+          const minMove = Number(params.minMove || 0.015);
+          const lineStyle = params.lineStyle || "dashed";
+          const defaultColor = params.color || "#e3b341";
 
-          if (!this._cachedPatterns || this._cachedPatterns.len !== candles.length) {
-            const pivots = findPivots(candles, 4, 4);
+          const cacheKey = [
+            candles.length,
+            pivotLeft,
+            pivotRight,
+            tolerance,
+            minMove,
+          ].join(":");
+          if (!this._cachedPatterns || this._cachedPatterns.key !== cacheKey) {
+            const pivots = findPivots(candles, pivotLeft, pivotRight);
             const patterns = [];
 
             // Double tops
@@ -1286,12 +1629,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
               const a = pivots.highs[k - 1], b = pivots.highs[k];
               if (b - a < 5 || b - a > 80) continue;
               const ha = candles[a].h, hb = candles[b].h;
-              if (Math.abs(ha - hb) / ha > 0.015) continue;
+              if (Math.abs(ha - hb) / ha > tolerance) continue;
               // Find lowest low between a and b
               let minLow = Infinity, minIdx = -1;
               for (let i = a + 1; i < b; i++) if (candles[i].l < minLow) { minLow = candles[i].l; minIdx = i; }
               if (minIdx === -1) continue;
-              if ((Math.min(ha, hb) - minLow) / Math.min(ha, hb) < 0.015) continue;
+              if ((Math.min(ha, hb) - minLow) / Math.min(ha, hb) < minMove) continue;
               patterns.push({ kind: "double-top", a, b, neckIdx: minIdx, neckPrice: minLow, topPrice: Math.max(ha, hb) });
             }
 
@@ -1300,15 +1643,15 @@ const lastCandleJson = JSON.stringify(lastCandle);
               const a = pivots.lows[k - 1], b = pivots.lows[k];
               if (b - a < 5 || b - a > 80) continue;
               const la = candles[a].l, lb = candles[b].l;
-              if (Math.abs(la - lb) / la > 0.015) continue;
+              if (Math.abs(la - lb) / la > tolerance) continue;
               let maxHigh = -Infinity, maxIdx = -1;
               for (let i = a + 1; i < b; i++) if (candles[i].h > maxHigh) { maxHigh = candles[i].h; maxIdx = i; }
               if (maxIdx === -1) continue;
-              if ((maxHigh - Math.max(la, lb)) / Math.max(la, lb) < 0.015) continue;
+              if ((maxHigh - Math.max(la, lb)) / Math.max(la, lb) < minMove) continue;
               patterns.push({ kind: "double-bottom", a, b, neckIdx: maxIdx, neckPrice: maxHigh, topPrice: Math.min(la, lb) });
             }
 
-            this._cachedPatterns = { len: candles.length, patterns };
+            this._cachedPatterns = { key: cacheKey, patterns };
           }
 
           for (const p of this._cachedPatterns.patterns) {
@@ -1322,12 +1665,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
             const ya = p2y(isTop ? ca.h : ca.l);
             const yb = p2y(isTop ? cb.h : cb.l);
             const yn = p2y(p.neckPrice);
-            const color = isTop ? "rgba(248,81,73,0.85)" : "rgba(63,185,80,0.85)";
+            const color = defaultColor;
 
             // Arc connecting two peaks/troughs
             ctx.strokeStyle = color;
             ctx.lineWidth = 1.5;
-            ctx.setLineDash([5, 4]);
+            ctx.setLineDash(lineStyle === "dotted" ? [2, 4] : lineStyle === "dashed" ? [5, 4] : []);
             ctx.beginPath();
             ctx.moveTo(xa, ya);
             ctx.quadraticCurveTo((xa + xb) / 2, isTop ? ya - 20 : ya + 20, xb, yb);
@@ -1352,16 +1695,18 @@ const lastCandleJson = JSON.stringify(lastCandle);
           }
         }
 
-        setPatterns(on) {
+        setPatterns(on, params) {
           this.showPatterns = !!on;
+          if (params) this.patternParams = params;
           this._cachedPatterns = null;
           this._overlayDirty = true;
         }
 
-        setMTF(on, higherCandles, higherTfLabel) {
+        setMTF(on, higherCandles, higherTfLabel, params) {
           this.showMTF = !!on;
           this._mtfCandles = higherCandles || null;
           this._mtfTfLabel = higherTfLabel || "";
+          if (params) this.mtfParams = params;
           this._overlayDirty = true;
         }
 
@@ -1379,15 +1724,17 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
           const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
 
-          // SMA(20) on higher-tf candles
-          const period = 20;
+          const params = this.mtfParams || {};
+          const period = Math.max(1, Number(params.period || 20));
+          const source = params.source || "close";
+          const color = params.color || "#ff8c00";
           const n = this._mtfCandles.length;
           if (n < period) return;
           const sma = new Array(n).fill(null);
           let sum = 0;
           for (let i = 0; i < n; i++) {
-            sum += this._mtfCandles[i].c;
-            if (i >= period) sum -= this._mtfCandles[i - period].c;
+            sum += candleSource(this._mtfCandles[i], source);
+            if (i >= period) sum -= candleSource(this._mtfCandles[i - period], source);
             if (i >= period - 1) sma[i] = sum / period;
           }
 
@@ -1400,7 +1747,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           }
           if (pts.length < 2) return;
 
-          ctx.strokeStyle = "rgba(255, 140, 0, 0.9)";
+          ctx.strokeStyle = color;
           ctx.lineWidth = 2.5;
           ctx.lineJoin = "round";
           ctx.lineCap  = "round";
@@ -1410,10 +1757,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
           ctx.stroke();
 
           ctx.font = "10px ui-monospace, monospace";
-          ctx.fillStyle = "rgba(255, 140, 0, 0.95)";
+          ctx.fillStyle = color;
           ctx.textAlign = "left";
           ctx.textBaseline = "top";
-          ctx.fillText(`— SMA 20 (${this._mtfTfLabel})`, 8, 50);
+          ctx.fillText(`— SMA ${period} (${this._mtfTfLabel})`, 8, 50);
         }
 
         _drawDivergence() {
@@ -1429,11 +1776,25 @@ const lastCandleJson = JSON.stringify(lastCandle);
           const pMin = vp.price.min, pMax = vp.price.max;
           const t2x = (t) => (t - tStart) / (tEnd - tStart) * W;
           const p2y = (p) => (pMax - p) / (pMax - pMin) * H;
+          const params = this.divergenceParams || {};
+          const rsiPeriod = Number(params.rsiPeriod || 14);
+          const pivotLeft = Number(params.pivotLeft || 3);
+          const pivotRight = Number(params.pivotRight || 3);
+          const source = params.source || "close";
+          const bullColor = params.bullColor || "#3fb950";
+          const bearColor = params.bearColor || "#f85149";
 
           // Compute RSI + pivots once
-          if (!this._cachedDivergence || this._cachedDivergence.len !== candles.length) {
-            const rsi = computeRSI(candles, 14);
-            const pivots = findPivots(candles, 3, 3);
+          const cacheKey = [
+            candles.length,
+            rsiPeriod,
+            pivotLeft,
+            pivotRight,
+            source,
+          ].join(":");
+          if (!this._cachedDivergence || this._cachedDivergence.key !== cacheKey) {
+            const rsi = computeRSI(candles, rsiPeriod, source);
+            const pivots = findPivots(candles, pivotLeft, pivotRight);
             const divs = [];
             // Bearish divergence: consecutive price-highs make HH but RSI makes LH
             for (let k = 1; k < pivots.highs.length; k++) {
@@ -1453,7 +1814,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 divs.push({ kind: "bull", a, b });
               }
             }
-            this._cachedDivergence = { len: candles.length, divs };
+            this._cachedDivergence = { key: cacheKey, divs };
           }
 
           for (const d of this._cachedDivergence.divs) {
@@ -1462,7 +1823,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             const xa = t2x(ca.time), xb = t2x(cb.time);
             const ya = d.kind === "bear" ? p2y(ca.h) : p2y(ca.l);
             const yb = d.kind === "bear" ? p2y(cb.h) : p2y(cb.l);
-            const color = d.kind === "bear" ? "rgba(248,81,73,0.9)" : "rgba(63,185,80,0.9)";
+            const color = d.kind === "bear" ? bearColor : bullColor;
 
             ctx.strokeStyle = color;
             ctx.lineWidth = 1.5;
@@ -1507,8 +1868,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this._overlayDirty = true;
         }
 
-        setDivergence(on) {
+        setDivergence(on, params) {
           this.showDivergence = !!on;
+          if (params) this.divergenceParams = params;
           this._cachedDivergence = null;
           this._overlayDirty = true;
         }
@@ -1525,6 +1887,27 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this.chart.setCandles(JSON.stringify(candles));
           this._candleCache = candles.slice();
           this.fitToData();
+        }
+        addCompareSymbol(symbol, candles, color) {
+          this._wasm((c) => c.addCompareSymbol?.(symbol, JSON.stringify(candles), color));
+        }
+        removeCompareSymbol(symbol) {
+          this._wasm((c) => c.removeCompareSymbol?.(symbol));
+        }
+        setFootprintData(candles) {
+          this._wasm((c) => c.setFootprintData?.(JSON.stringify(candles)));
+        }
+        setFootprintEnabled(on) {
+          this._wasm((c) => c.setFootprintEnabled?.(!!on));
+        }
+        addIndicatorPane(id, params = {}) {
+          return this._wasm((c) => c.addIndicatorPane?.(id, JSON.stringify(params)));
+        }
+        removePane(id) {
+          return this._wasm((c) => c.removePane?.(id));
+        }
+        setPaneHeightFraction(id, fraction) {
+          this._wasm((c) => c.setPaneHeightFraction?.(id, fraction));
         }
         addCandle(c)         {
           if (!this.chart) return;
@@ -1569,6 +1952,11 @@ const lastCandleJson = JSON.stringify(lastCandle);
           showPatterns:  false,
           showMTF:       false,
           darkMode:      true,
+          indicatorSettingsOpen: false,
+          activeIndicatorId: "strategy",
+          indicatorSettings: {},
+          oscillatorPanes: [],
+          indicatorPanePercent: 28,
 
           // Playback mode: off | simulate | replay
           mode:          "off",
@@ -1600,6 +1988,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
           symbolsOpen:    false,
           symbolQuery:    "",
           selectedSymbol: "BTC / USD",
+          compareOpen:    false,
+          compareQuery:   "",
+          compareSymbols: [],
 
           ohlcv:         { open:null, high:null, low:null, close:null, volume:null, dir:"" },
           lastPrice:     null,
@@ -1607,11 +1998,16 @@ const lastCandleJson = JSON.stringify(lastCandle);
           chart:         null,
           drawTool:      "pointer",
           trendStep:     1,
+          lasso:         { active:false, additive:false, startX:0, startY:0, x:0, y:0, moved:false },
 
           async init() {
+            this.indicatorSettings = this._readIndicatorSettings();
             this.chart = new DemoChart(document.getElementById("chart-container"));
             this.chart.onCrosshair = (info) => this._updateOhlcv(info);
             this.chart.onAlertPlace = (price) => this.addAlertAt(price);
+            this.chart.onLassoStart = (x, y, additive) => this.startLasso(x, y, additive);
+            this.chart.onLassoMove = (x, y) => this.moveLasso(x, y);
+            this.chart.onLassoEnd = (x, y) => this.endLasso(x, y);
             this.chart.onDrawingPlaced = (ev) => {
               if (ev === "trendline-step1" || ev === "rectangle-step1" || ev === "fibonacci-step1") {
                 this.trendStep = 2; return;
@@ -1663,6 +2059,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
               if (e.key === "p" || e.key === "P") this.togglePatterns();
               if (e.key === "m" || e.key === "M") this.toggleMTF();
               if (e.key === "n" || e.key === "N") this.toggleNews();
+              if (e.key === "Delete" || e.key === "Backspace") {
+                e.preventDefault();
+                this.chart?._wasm(c => c.deleteSelectedDrawings?.());
+              }
               if (e.key === "Escape")              this.setDrawTool("pointer");
             });
           },
@@ -1674,6 +2074,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             let candles = raw;
             if (this.chartType === "ha") candles = toHeikinAshi(raw);
             else if (this.chartType === "renko") candles = toRenko(raw);
+            else if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(raw));
             this.chart.setCandles(candles);
           },
 
@@ -1689,26 +2090,30 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setTheme(this.darkMode);
             this.chart.setPriceLocked(this.axisLocked);
             this.chart.setVPMode(this.vpMode);
-            this.chart.setStrategy(this.showStrategy);
-            this.chart.setDivergence(this.showDivergence);
-            this.chart.setPatterns(this.showPatterns);
+            this.chart.setStrategy(this.showStrategy, this.indicatorSettings.strategy);
+            this.chart.setDivergence(this.showDivergence, this.indicatorSettings.divergence);
+            this.chart.setPatterns(this.showPatterns, this.indicatorSettings.patterns);
             this._applyMTF();
             // Rebuild news cache for this timeframe
             this._newsCache = makeNewsEvents(this._rawCandles(tf));
             this._newsCacheTf = tf;
             this.chart.setNews(this.showNews, this._newsCache);
+            this._syncOscillatorPanes();
             const wasmStyle = (this.chartType === "ha" || this.chartType === "renko") ? "candlestick" : this.chartType;
             this.chart.setCandleStyle(wasmStyle);
+            this.chart.setFootprintEnabled(this.chartType === "footprint");
             this._loadCandles(tf);
+            this._syncCompareSymbols();
             const raw = this._rawCandles(tf);
             this.simLastCandle = { ...raw[raw.length-1] };
           },
 
           setChartType(type) {
             this.chartType = type;
-            // HA + Renko reuse the candlestick renderer; line/area/ohlc/hollow map directly
+            // HA + Renko reuse the candlestick renderer; line/area/ohlc/hollow/footprint map directly
             const wasmStyle = (type === "ha" || type === "renko") ? "candlestick" : type;
             this.chart.setCandleStyle(wasmStyle);
+            this.chart.setFootprintEnabled(type === "footprint");
             this._loadCandles(this.activeTf);
           },
 
@@ -1720,6 +2125,38 @@ const lastCandleJson = JSON.stringify(lastCandle);
           },
 
           clearTools() { this.chart?.clearTools(); this.setDrawTool("pointer"); },
+
+          startLasso(x, y, additive) {
+            if (this.drawTool !== "pointer") return false;
+            this.lasso = { active:true, additive:!!additive, startX:x, startY:y, x, y, moved:false };
+            return true;
+          },
+
+          moveLasso(x, y) {
+            if (!this.lasso.active) return false;
+            this.lasso.x = x;
+            this.lasso.y = y;
+            this.lasso.moved = this.lasso.moved || Math.hypot(x - this.lasso.startX, y - this.lasso.startY) > 4;
+            return true;
+          },
+
+          endLasso(x, y) {
+            if (!this.lasso.active) return false;
+            const lasso = this.lasso;
+            this.lasso.active = false;
+            if (lasso.moved) {
+              this.chart?._wasm(c => c.selectDrawingsInRect?.(lasso.startX, lasso.startY, x, y, lasso.additive));
+            }
+            return true;
+          },
+
+          lassoStyle() {
+            const left = Math.min(this.lasso.startX, this.lasso.x);
+            const top = Math.min(this.lasso.startY, this.lasso.y);
+            const width = Math.abs(this.lasso.x - this.lasso.startX);
+            const height = Math.abs(this.lasso.y - this.lasso.startY);
+            return `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+          },
 
           drawHintText() {
             if (this.drawTool === "hline")      return "Click to place horizontal line";
@@ -1760,9 +2197,70 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart?.setVPMode(mode);
           },
 
+          _defaultIndicatorSettings() {
+            const out = {};
+            for (const [id, def] of Object.entries(INDICATOR_DEFS)) {
+              out[id] = {};
+              for (const param of def.parameters) out[id][param.id] = param.default;
+            }
+            return out;
+          },
+
+          _readIndicatorSettings() {
+            const defaults = this._defaultIndicatorSettings();
+            try {
+              const stored = JSON.parse(localStorage.getItem(INDICATOR_STORAGE_KEY) || "{}");
+              for (const id of Object.keys(defaults)) {
+                defaults[id] = { ...defaults[id], ...(stored[id] || {}) };
+              }
+            } catch (_) {}
+            return defaults;
+          },
+
+          _writeIndicatorSettings() {
+            try { localStorage.setItem(INDICATOR_STORAGE_KEY, JSON.stringify(this.indicatorSettings)); }
+            catch (_) {}
+          },
+
+          activeIndicatorDef() { return INDICATOR_DEFS[this.activeIndicatorId] || null; },
+          indicatorValue(id, paramId) { return this.indicatorSettings?.[id]?.[paramId]; },
+
+          openIndicatorSettings(id) {
+            this.activeIndicatorId = id;
+            this.indicatorSettingsOpen = true;
+          },
+
+          setIndicatorParam(id, paramId, rawValue) {
+            const param = INDICATOR_DEFS[id]?.parameters.find((item) => item.id === paramId);
+            if (!param) return;
+            let value = rawValue;
+            if (param.type === "integer") value = Math.round(Number(rawValue));
+            else if (param.type === "float") value = Number(rawValue);
+            else if (param.type === "boolean") value = !!rawValue;
+            this.indicatorSettings[id][paramId] = value;
+            this._writeIndicatorSettings();
+            this._refreshIndicator(id);
+          },
+
+          resetIndicatorSettings(id) {
+            const def = INDICATOR_DEFS[id];
+            if (!def) return;
+            this.indicatorSettings[id] = {};
+            for (const param of def.parameters) this.indicatorSettings[id][param.id] = param.default;
+            this._writeIndicatorSettings();
+            this._refreshIndicator(id);
+          },
+
+          _refreshIndicator(id) {
+            if (id === "strategy" && this.showStrategy) this.chart?.setStrategy(true, this.indicatorSettings.strategy);
+            else if (id === "divergence" && this.showDivergence) this.chart?.setDivergence(true, this.indicatorSettings.divergence);
+            else if (id === "patterns" && this.showPatterns) this.chart?.setPatterns(true, this.indicatorSettings.patterns);
+            else if (id === "mtf" && this.showMTF) this._applyMTF();
+          },
+
           toggleStrategy() {
             this.showStrategy = !this.showStrategy;
-            this.chart?.setStrategy(this.showStrategy);
+            this.chart?.setStrategy(this.showStrategy, this.indicatorSettings.strategy);
           },
 
           toggleNews() {
@@ -1776,12 +2274,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
           toggleDivergence() {
             this.showDivergence = !this.showDivergence;
-            this.chart?.setDivergence(this.showDivergence);
+            this.chart?.setDivergence(this.showDivergence, this.indicatorSettings.divergence);
           },
 
           togglePatterns() {
             this.showPatterns = !this.showPatterns;
-            this.chart?.setPatterns(this.showPatterns);
+            this.chart?.setPatterns(this.showPatterns, this.indicatorSettings.patterns);
           },
 
           toggleMTF() {
@@ -1790,19 +2288,55 @@ const lastCandleJson = JSON.stringify(lastCandle);
           },
 
           _applyMTF() {
-            if (!this.showMTF) { this.chart?.setMTF(false, null, ""); return; }
+            const params = this.indicatorSettings.mtf;
+            if (!this.showMTF) { this.chart?.setMTF(false, null, "", params); return; }
             const order = ["1m","5m","15m","1h","4h","1d"];
             const idx = order.indexOf(this.activeTf);
             if (idx < 0 || idx >= order.length - 1) {
               // No higher tf available; just label "n/a"
-              this.chart?.setMTF(true, [], "n/a");
+              this.chart?.setMTF(true, [], "n/a", params);
               return;
             }
-            // Step up by 2 levels if available, else 1
-            const targetIdx = Math.min(order.length - 1, idx + 2);
+            const targetIdx = Math.min(order.length - 1, idx + Number(params.stepUp || 2));
             const higherTf = order[targetIdx];
             const higherCandles = ALL_CANDLES[higherTf] || [];
-            this.chart?.setMTF(true, higherCandles, higherTf);
+            this.chart?.setMTF(true, higherCandles, higherTf, params);
+          },
+
+          hasOscillatorPane(id) {
+            return this.oscillatorPanes.some((pane) => pane.id === id);
+          },
+
+          toggleOscillatorPane(id) {
+            if (this.hasOscillatorPane(id)) {
+              this.oscillatorPanes = this.oscillatorPanes.filter((pane) => pane.id !== id);
+              this.chart?.removePane(`pane-${id}`);
+              return;
+            }
+            this.oscillatorPanes.push({ id, paneId: `pane-${id}` });
+            const paneId = this.chart?.addIndicatorPane(id, { source: "close" }) || `pane-${id}`;
+            this.oscillatorPanes[this.oscillatorPanes.length - 1].paneId = paneId;
+            this.setIndicatorPanePercent(this.indicatorPanePercent);
+          },
+
+          _syncOscillatorPanes() {
+            for (const pane of this.oscillatorPanes) {
+              pane.paneId = this.chart?.addIndicatorPane(pane.id, { source: "close" }) || pane.paneId;
+              this.chart?.setPaneHeightFraction(pane.paneId, this.indicatorPanePercent / 100);
+            }
+          },
+
+          setIndicatorPanePercent(percent) {
+            this.indicatorPanePercent = Number(percent);
+            const fraction = this.indicatorPanePercent / 100;
+            for (const pane of this.oscillatorPanes) {
+              this.chart?.setPaneHeightFraction(pane.paneId, fraction);
+            }
+          },
+
+          paneSummary() {
+            const main = Math.max(38, Math.round(100 - this.oscillatorPanes.length * this.indicatorPanePercent));
+            return `${main}% Chart / ${this.indicatorPanePercent}% Pane`;
           },
 
           toggleTheme() {
@@ -1856,6 +2390,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 v: Math.round(Math.max(10, 200+simRand()*400)*10)/10,
               };
               this.chart.addCandle(candle);
+              if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(this.chart.getCachedCandles()));
               this._onNewClose(candle.c);
               this.simLastCandle = candle;
             }, 1500);
@@ -1868,6 +2403,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             let base = raw;
             if (this.chartType === "ha")    base = toHeikinAshi(raw);
             else if (this.chartType === "renko") base = toRenko(raw);
+            else if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(raw));
             this.replayBaseCandles = base;
             this.replayTotal = base.length;
             // Start at ~30% of data so user sees something animated
@@ -1890,6 +2426,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
               }
               const c = this.replayBaseCandles[this.replayPos];
               this.chart.addCandle(c);
+              if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(this.chart.getCachedCandles()));
               this._onNewClose(c.c);
               this.replayPos += 1;
             }, intervalMs);
@@ -1906,6 +2443,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             if (this.replayPos >= this.replayTotal) return;
             const c = this.replayBaseCandles[this.replayPos];
             this.chart.addCandle(c);
+            if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(this.chart.getCachedCandles()));
             this._onNewClose(c.c);
             this.replayPos += 1;
           },
@@ -1916,6 +2454,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.replayPos = idx;
             // Rebuild chart from start
             this.chart.setCandles(this.replayBaseCandles.slice(0, idx));
+            if (this.chartType === "footprint") this.chart.setFootprintData(makeFootprintCandles(this.replayBaseCandles.slice(0, idx)));
             if (idx > 0) this.lastPrice = this.replayBaseCandles[idx - 1].c;
           },
 
@@ -1974,18 +2513,23 @@ const lastCandleJson = JSON.stringify(lastCandle);
           _checkStrategySignal() {
             if (!this.showStrategy) return;
             const candles = this.chart?.getCachedCandles() || [];
-            if (candles.length < 21) return;
+            const params = this.indicatorSettings.strategy || {};
+            if (params.showSignals === false) return;
+            const fastPeriod = Math.max(2, Number(params.fastPeriod || 5));
+            const slowPeriod = Math.max(fastPeriod + 1, Number(params.slowPeriod || 20));
+            const source = params.source || "close";
+            if (candles.length < slowPeriod + 1) return;
             const fastAt = (idx) => {
-              if (idx < 4) return null;
+              if (idx < fastPeriod - 1) return null;
               let s = 0;
-              for (let i = idx - 4; i <= idx; i++) s += candles[i].c;
-              return s / 5;
+              for (let i = idx - fastPeriod + 1; i <= idx; i++) s += candleSource(candles[i], source);
+              return s / fastPeriod;
             };
             const slowAt = (idx) => {
-              if (idx < 19) return null;
+              if (idx < slowPeriod - 1) return null;
               let s = 0;
-              for (let i = idx - 19; i <= idx; i++) s += candles[i].c;
-              return s / 20;
+              for (let i = idx - slowPeriod + 1; i <= idx; i++) s += candleSource(candles[i], source);
+              return s / slowPeriod;
             };
             const n = candles.length - 1;
             const fNow = fastAt(n), sNow = slowAt(n);
@@ -2062,6 +2606,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart.setPriceLocked(this.axisLocked);
             const wasmStyle = (lo.chartType === "ha" || lo.chartType === "renko") ? "candlestick" : lo.chartType;
             this.chart.setCandleStyle(wasmStyle);
+            this.chart.setFootprintEnabled(lo.chartType === "footprint");
             // Import full WASM state if available
             if (lo.wasmState) {
               try { this.chart.chart?.importState(lo.wasmState); } catch (e) { console.warn("Import failed:", e); }
@@ -2088,6 +2633,49 @@ const lastCandleJson = JSON.stringify(lastCandle);
           selectSymbol(s) {
             this.selectedSymbol = s.sym;
             this.symbolsOpen = false;
+          },
+
+          filteredCompareSymbols() {
+            const q = (this.compareQuery || "").trim().toLowerCase();
+            const active = new Set(this.compareSymbols.map((entry) => entry.symbol));
+            return MOCK_SYMBOLS
+              .filter((s) => !active.has(s.sym))
+              .filter((s) => !q || s.sym.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
+              .slice(0, 8);
+          },
+
+          addCompareFromInput() {
+            const q = (this.compareQuery || "").trim().toLowerCase();
+            if (!q) return;
+            const found = MOCK_SYMBOLS.find((s) =>
+              s.sym.toLowerCase() === q || s.name.toLowerCase().includes(q)
+            );
+            if (found) this.addCompareSymbol(found.sym);
+          },
+
+          addCompareSymbol(symbol) {
+            if (this.compareSymbols.some((entry) => entry.symbol === symbol)) return;
+            if (this.compareSymbols.length >= 3) return;
+            const color = COMPARE_COLORS[this.compareSymbols.length % COMPARE_COLORS.length];
+            this.compareSymbols.push({ symbol, color });
+            this.chart?.addCompareSymbol(symbol, makeCompareCandles(symbol, this.activeTf), color);
+            this.compareQuery = "";
+            this.compareOpen = this.compareSymbols.length < 3;
+          },
+
+          removeCompareSymbol(symbol) {
+            this.compareSymbols = this.compareSymbols.filter((entry) => entry.symbol !== symbol);
+            this.chart?.removeCompareSymbol(symbol);
+          },
+
+          _syncCompareSymbols() {
+            for (const entry of this.compareSymbols) {
+              this.chart?.addCompareSymbol(
+                entry.symbol,
+                makeCompareCandles(entry.symbol, this.activeTf),
+                entry.color
+              );
+            }
           },
 
           _updateOhlcv(info) {

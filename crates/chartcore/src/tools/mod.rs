@@ -232,6 +232,26 @@ impl ToolManager {
         }
     }
 
+    /// Shift every node of all selected tools by (dt, dp).
+    pub fn move_many(&mut self, ids: &[String], dt: i64, dp: f64) {
+        for tool in self.tools.iter_mut() {
+            if ids.iter().any(|id| id == tool.id()) {
+                for node in tool.nodes_mut().iter_mut() {
+                    node.time += dt;
+                    node.price += dp;
+                }
+            }
+        }
+    }
+
+    /// Remove all tools with matching IDs.
+    pub fn remove_many(&mut self, ids: &[String]) -> usize {
+        let before = self.tools.len();
+        self.tools
+            .retain(|tool| !ids.iter().any(|id| id == tool.id()));
+        before - self.tools.len()
+    }
+
     /// Remove and return the selected tool, clearing selection.
     pub fn delete_selected(&mut self) -> Option<Box<dyn ChartTool>> {
         let id = self.selected_id.take()?;

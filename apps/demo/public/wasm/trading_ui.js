@@ -179,12 +179,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_359(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_359(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_358(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_358(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_358(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_358(arg0, arg1);
+function __wasm_bindgen_func_elem_357(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_357(arg0, arg1);
 }
 
 const __wbindgen_enum_BinaryType = ["blob", "arraybuffer"];
@@ -292,6 +292,17 @@ export class WasmChart {
         wasm.wasmchart_onMouseUp(this.__wbg_ptr, x, y, button);
     }
     /**
+     * Remove an indicator pane by pane ID.
+     * @param {string} pane_id
+     * @returns {boolean}
+     */
+    removePane(pane_id) {
+        const ptr0 = passStringToWasm0(pane_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmchart_removePane(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
      * Remove a tool by ID
      * @param {string} id
      */
@@ -393,6 +404,36 @@ export class WasmChart {
         wasm.wasmchart_onTouchEnd(this.__wbg_ptr, x, y);
     }
     /**
+     * Set trading session configurations from JSON array.
+     * Each session: `{ name, open_utc: [h,m], close_utc: [h,m], color: [r,g,b,a], show_open, show_close }`
+     * Pass an empty array `[]` to clear sessions.
+     * Pass `"default"` as the string to load NYSE, London, Tokyo, Sydney presets.
+     * @param {string} sessions_json
+     */
+    setSessions(sessions_json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(sessions_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_setSessions(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Set timezone offset in minutes from UTC.
+     * Examples: 60 = UTC+1, -300 = UTC-5, 540 = UTC+9, 0 = UTC
+     * @param {number} offset_minutes
+     */
+    setTimezone(offset_minutes) {
+        wasm.wasmchart_setTimezone(this.__wbg_ptr, offset_minutes);
+    }
+    /**
      * Attach a canvas element for rendering
      * @param {HTMLCanvasElement} canvas
      */
@@ -481,6 +522,29 @@ export class WasmChart {
         }
     }
     /**
+     * Create an ellipse drawing tool (bounding box defined by two corner points)
+     * @param {string} id
+     * @param {bigint} t1
+     * @param {number} p1
+     * @param {bigint} t2
+     * @param {number} p2
+     */
+    createEllipse(id, t1, p1, t2, p2) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_createEllipse(retptr, this.__wbg_ptr, ptr0, len0, t1, p1, t2, p2);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * End time scaling - user released mouse
      */
     endTimeScale() {
@@ -494,6 +558,26 @@ export class WasmChart {
             }
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Get current scale mode as string
+     * @returns {string}
+     */
+    getScaleMode() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_getScaleMode(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -537,6 +621,26 @@ export class WasmChart {
         }
     }
     /**
+     * Set price scale display mode.
+     * `mode` must be one of: "price", "log", "percent", "indexed"
+     * @param {string} mode
+     */
+    setScaleMode(mode) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(mode, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_setScaleMode(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * End price scaling - user released mouse
      */
     endPriceScale() {
@@ -561,6 +665,46 @@ export class WasmChart {
         return ret;
     }
     /**
+     * Get current magnet mode as string
+     * @returns {string}
+     */
+    getMagnetMode() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_getMagnetMode(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Return pane layout as JSON with main + indicator fractions.
+     * @returns {string}
+     */
+    getPaneLayout() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_getPaneLayout(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * Query current price axis lock state
      * @returns {boolean}
      */
@@ -582,6 +726,26 @@ export class WasmChart {
      */
     setBarSpacing(extra_px) {
         wasm.wasmchart_setBarSpacing(this.__wbg_ptr, extra_px);
+    }
+    /**
+     * Set the magnet/snap mode for drawing tool placement.
+     * `mode` must be one of: "off", "weak", "strong"
+     * @param {string} mode
+     */
+    setMagnetMode(mode) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(mode, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_setMagnetMode(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
      * Create a Fibonacci retracement drawing tool
@@ -761,6 +925,17 @@ export class WasmChart {
         }
     }
     /**
+     * Select drawing at canvas position. If additive is true, toggles membership.
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} additive
+     * @returns {boolean}
+     */
+    selectDrawingAt(x, y, additive) {
+        const ret = wasm.wasmchart_selectDrawingAt(this.__wbg_ptr, x, y, additive);
+        return ret !== 0;
+    }
+    /**
      * Replace all candles (delegates to CandleBuffer::snapshot).
      *
      * Backward-compatible alias for `setCandles`; both methods accept the
@@ -783,6 +958,13 @@ export class WasmChart {
         }
     }
     /**
+     * Show or hide session marker lines
+     * @param {boolean} show
+     */
+    setShowSessions(show) {
+        wasm.wasmchart_setShowSessions(this.__wbg_ptr, show);
+    }
+    /**
      * Start price scaling - user pressed mouse on price axis
      * @param {number} y
      */
@@ -797,6 +979,57 @@ export class WasmChart {
             }
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Add or replace a comparison symbol rendered as normalized percent performance.
+     * @param {string} symbol
+     * @param {string} candles_json
+     * @param {string} color
+     */
+    addCompareSymbol(symbol, candles_json, color) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(symbol, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(candles_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(color, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len2 = WASM_VECTOR_LEN;
+            wasm.wasmchart_addCompareSymbol(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Create or replace an indicator pane. Returns the pane ID.
+     * @param {string} indicator_id
+     * @param {string} params_json
+     * @returns {string}
+     */
+    addIndicatorPane(indicator_id, params_json) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(indicator_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(params_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.wasmchart_addIndicatorPane(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred3_0 = r0;
+            deferred3_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
         }
     }
     /**
@@ -816,11 +1049,88 @@ export class WasmChart {
         return takeObject(ret);
     }
     /**
+     * Replace footprint candle data.
+     * @param {string} candles_json
+     */
+    setFootprintData(candles_json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(candles_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_setFootprintData(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Return active comparison symbols as JSON.
+     * @returns {string}
+     */
+    getCompareSymbols() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_getCompareSymbols(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Get current timezone offset in minutes
+     * @returns {number}
+     */
+    getTimezoneOffset() {
+        const ret = wasm.wasmchart_getTimezoneOffset(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Set bar width ratio (0.0 = auto, 0.1–0.95 = explicit fraction of slot)
      * @param {number} ratio
      */
     setBarWidthRatio(ratio) {
         wasm.wasmchart_setBarWidthRatio(this.__wbg_ptr, ratio);
+    }
+    /**
+     * Snap a (time, price) coordinate to the nearest OHLC point when magnet is active.
+     * Returns JSON: `{ time: i64, price: f64, snapped: bool }`
+     * @param {bigint} time
+     * @param {number} price
+     * @returns {any}
+     */
+    snapToCandle(time, price) {
+        const ret = wasm.wasmchart_snapToCandle(this.__wbg_ptr, time, price);
+        return takeObject(ret);
+    }
+    /**
+     * Append or replace one footprint candle by timestamp.
+     * @param {string} candle_json
+     */
+    addFootprintCandle(candle_json) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(candle_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmchart_addFootprintCandle(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
      * Create a new vertical line tool
@@ -841,6 +1151,60 @@ export class WasmChart {
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
+    }
+    /**
+     * Set candle style, including Renko with brick size.
+     * For renko: pass "renko" and provide brick_size > 0.
+     * @param {number} brick_size
+     */
+    setRenkoBrickSize(brick_size) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_setRenkoBrickSize(retptr, this.__wbg_ptr, brick_size);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Return selected drawing IDs as JSON.
+     * @returns {string}
+     */
+    getSelectedDrawings() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_getSelectedDrawings(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Remove a comparison symbol.
+     * @param {string} symbol
+     */
+    removeCompareSymbol(symbol) {
+        const ptr0 = passStringToWasm0(symbol, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmchart_removeCompareSymbol(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * Enable or disable footprint rendering.
+     * @param {boolean} enabled
+     */
+    setFootprintEnabled(enabled) {
+        wasm.wasmchart_setFootprintEnabled(this.__wbg_ptr, enabled);
     }
     /**
      * Upsert a single candle by timestamp (delegates to CandleBuffer::update_running).
@@ -894,6 +1258,73 @@ export class WasmChart {
     getCandleAtPosition(x, y) {
         const ret = wasm.wasmchart_getCandleAtPosition(this.__wbg_ptr, x, y);
         return takeObject(ret);
+    }
+    /**
+     * Select all drawings whose nodes are fully inside a screen-space rectangle.
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {boolean} additive
+     * @returns {string}
+     */
+    selectDrawingsInRect(x1, y1, x2, y2, additive) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmchart_selectDrawingsInRect(retptr, this.__wbg_ptr, x1, y1, x2, y2, additive);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Delete all selected drawings as one undoable operation.
+     * @returns {number}
+     */
+    deleteSelectedDrawings() {
+        const ret = wasm.wasmchart_deleteSelectedDrawings(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Set one pane height fraction, then normalize all panes.
+     * @param {string} pane_id
+     * @param {number} fraction
+     */
+    setPaneHeightFraction(pane_id, fraction) {
+        const ptr0 = passStringToWasm0(pane_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmchart_setPaneHeightFraction(this.__wbg_ptr, ptr0, len0, fraction);
+    }
+    /**
+     * Move all selected drawings to follow the current canvas position.
+     * @param {number} x
+     * @param {number} y
+     */
+    dragSelectedDrawingsTo(x, y) {
+        wasm.wasmchart_dragSelectedDrawingsTo(this.__wbg_ptr, x, y);
+    }
+    /**
+     * End a bulk drawing drag.
+     */
+    endSelectedDrawingsDrag() {
+        wasm.wasmchart_endSelectedDrawingsDrag(this.__wbg_ptr);
+    }
+    /**
+     * Start bulk-dragging selected drawings from a canvas position.
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
+    startSelectedDrawingsDrag(x, y) {
+        const ret = wasm.wasmchart_startSelectedDrawingsDrag(this.__wbg_ptr, x, y);
+        return ret !== 0;
     }
     /**
      * Create a new chart instance
@@ -2261,6 +2692,9 @@ function __wbg_get_imports() {
         const ret = getObject(arg0).devicePixelRatio;
         return ret;
     };
+    imports.wbg.__wbg_ellipse_8fe237473fd39db1 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+        getObject(arg0).ellipse(arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+    }, arguments) };
     imports.wbg.__wbg_error_7534b8e9a36f1ab4 = function(arg0, arg1) {
         let deferred0_0;
         let deferred0_1;
@@ -2504,17 +2938,17 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_3a4c91c0888a208b = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 1, function: Function { arguments: [NamedExternref("CloseEvent")], shim_idx: 2, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_110, __wasm_bindgen_func_elem_359);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_111, __wasm_bindgen_func_elem_358);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_46d6ccd6e2a13afa = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 1, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 2, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_110, __wasm_bindgen_func_elem_359);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_111, __wasm_bindgen_func_elem_358);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_a4bd8eb24f626613 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 1, function: Function { arguments: [NamedExternref("ErrorEvent")], shim_idx: 2, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_110, __wasm_bindgen_func_elem_359);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_111, __wasm_bindgen_func_elem_358);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
@@ -2524,7 +2958,7 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_e7994c6135e3c811 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 1, function: Function { arguments: [], shim_idx: 3, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_110, __wasm_bindgen_func_elem_358);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_111, __wasm_bindgen_func_elem_357);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_object_clone_ref = function(arg0) {

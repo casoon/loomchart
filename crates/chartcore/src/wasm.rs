@@ -8,7 +8,8 @@ use web_sys::HtmlCanvasElement;
 
 #[cfg(feature = "wasm")]
 use crate::core::{
-    Candle, ChartState, EventHandler, KeyboardEvent, MouseButton, MouseEvent, Timeframe, TouchEvent,
+    Candle, ChartState, EventHandler, FootprintCandle, KeyboardEvent, MouseButton, MouseEvent,
+    Timeframe, TouchEvent,
 };
 
 #[cfg(feature = "wasm")]
@@ -23,6 +24,26 @@ pub struct WasmChart {
     renderer: Option<Canvas2DRenderer>,
     undo_stack: Vec<String>,
     redo_stack: Vec<String>,
+    compare_symbols: Vec<CompareSymbol>,
+    footprint_candles: Vec<FootprintCandle>,
+    footprint_enabled: bool,
+    drawing_drag_anchor: Option<(i64, f64)>,
+    indicator_panes: Vec<IndicatorPane>,
+}
+
+#[cfg(feature = "wasm")]
+struct CompareSymbol {
+    symbol: String,
+    candles: Vec<Candle>,
+    color: crate::primitives::Color,
+}
+
+#[cfg(feature = "wasm")]
+struct IndicatorPane {
+    pane_id: String,
+    indicator_id: String,
+    params_json: String,
+    height_fraction: f64,
 }
 
 #[cfg(feature = "wasm")]
@@ -44,6 +65,11 @@ impl WasmChart {
             renderer: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            compare_symbols: Vec::new(),
+            footprint_candles: Vec::new(),
+            footprint_enabled: false,
+            drawing_drag_anchor: None,
+            indicator_panes: Vec::new(),
         })
     }
 
@@ -165,6 +191,475 @@ impl WasmChart {
     #[wasm_bindgen(js_name = getCandles)]
     pub fn get_candles(&self) -> String {
         serde_json::to_string(&self.state.candles).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Add or replace a comparison symbol rendered as normalized percent performance.
+    #[wasm_bindgen(js_name = addCompareSymbol)]
+    pub fn add_compare_symbol(
+        &mut self,
+        symbol: &str,
+        candles_json: &str,
+        color: &str,
+    ) -> Result<(), JsValue> {
+        let symbol = symbol.trim();
+        if symbol.is_empty() {
+            return Err(JsValue::from_str("Compare symbol must not be empty"));
+        }
+
+        let candles: Vec<Candle> = serde_json::from_str(candles_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse compare candles: {}", e)))?;
+        if candles.is_empty() {
+            return Err(JsValue::from_str("Compare candles must not be empty"));
+        }
+
+        let color = crate::primitives::Color::from_hex(color)
+            .map_err(|e| JsValue::from_str(&format!("Invalid compare color: {}", e)))?;
+
+        if let Some(existing) = self
+            .compare_symbols
+            .iter_mut()
+            .find(|entry| entry.symbol == symbol)
+        {
+            existing.candles = candles;
+            existing.color = color;
+        } else {
+            if self.compare_symbols.len() >= 3 {
+                return Err(JsValue::from_str(
+                    "A maximum of 3 compare symbols is supported",
+                ));
+            }
+            self.compare_symbols.push(CompareSymbol {
+                symbol: symbol.to_string(),
+                candles,
+                color,
+            });
+        }
+
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Remove a comparison symbol.
+    #[wasm_bindgen(js_name = removeCompareSymbol)]
+    pub fn remove_compare_symbol(&mut self, symbol: &str) {
+        self.compare_symbols
+            .retain(|entry| entry.symbol != symbol.trim());
+        self.state.mark_dirty();
+    }
+
+    /// Return active comparison symbols as JSON.
+    #[wasm_bindgen(js_name = getCompareSymbols)]
+    pub fn get_compare_symbols(&self) -> String {
+        let symbols: Vec<&str> = self
+            .compare_symbols
+            .iter()
+            .map(|entry| entry.symbol.as_str())
+            .collect();
+        serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Replace footprint candle data.
+    #[wasm_bindgen(js_name = setFootprintData)]
+    pub fn set_footprint_data(&mut self, candles_json: &str) -> Result<(), JsValue> {
+        let candles: Vec<FootprintCandle> = serde_json::from_str(candles_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse footprint data: {}", e)))?;
+        self.footprint_candles = candles;
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Append or replace one footprint candle by timestamp.
+    #[wasm_bindgen(js_name = addFootprintCandle)]
+    pub fn add_footprint_candle(&mut self, candle_json: &str) -> Result<(), JsValue> {
+        let candle: FootprintCandle = serde_json::from_str(candle_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse footprint candle: {}", e)))?;
+        if let Some(existing) = self
+            .footprint_candles
+            .iter_mut()
+            .find(|entry| entry.time == candle.time)
+        {
+            *existing = candle;
+        } else {
+            self.footprint_candles.push(candle);
+            self.footprint_candles.sort_by_key(|entry| entry.time);
+        }
+        self.state.mark_dirty();
+        Ok(())
+    }
+
+    /// Enable or disable footprint rendering.
+    #[wasm_bindgen(js_name = setFootprintEnabled)]
+    pub fn set_footprint_enabled(&mut self, enabled: bool) {
+        self.footprint_enabled = enabled;
+        if enabled {
+            self.state.options.candle_style = crate::primitives::CandleStyle::Footprint;
+        } else if self.state.options.candle_style == crate::primitives::CandleStyle::Footprint {
+            self.state.options.candle_style = crate::primitives::CandleStyle::Candlestick;
+        }
+        self.state.mark_dirty();
+    }
+
+    fn render_compare_symbols(
+        compare_symbols: &[CompareSymbol],
+        state: &ChartState,
+        renderer: &mut Canvas2DRenderer,
+    ) {
+        if compare_symbols.is_empty() {
+            return;
+        }
+
+        let vp = &state.viewport;
+        let chart_height = vp.dimensions.height as f64;
+        let chart_width = vp.dimensions.width as f64;
+        let time_start = vp.time.start;
+        let time_end = vp.time.end;
+
+        let mut series = Vec::new();
+        let mut percent_min = 0.0_f64;
+        let mut percent_max = 0.0_f64;
+
+        for entry in compare_symbols {
+            let visible: Vec<&Candle> = entry
+                .candles
+                .iter()
+                .filter(|candle| candle.time >= time_start && candle.time <= time_end)
+                .collect();
+            if visible.len() < 2 {
+                continue;
+            }
+
+            let base_close = visible
+                .iter()
+                .find(|candle| candle.c.is_finite() && candle.c > 0.0)
+                .map(|candle| candle.c);
+            let Some(base_close) = base_close else {
+                continue;
+            };
+
+            let values: Vec<(i64, f64)> = visible
+                .iter()
+                .filter_map(|candle| {
+                    if candle.c.is_finite() {
+                        Some((candle.time, ((candle.c / base_close) - 1.0) * 100.0))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if values.len() < 2 {
+                continue;
+            }
+
+            for (_, percent) in &values {
+                percent_min = percent_min.min(*percent);
+                percent_max = percent_max.max(*percent);
+            }
+
+            series.push((entry.symbol.as_str(), entry.color, values));
+        }
+
+        if series.is_empty() {
+            return;
+        }
+
+        let padding = ((percent_max - percent_min).abs() * 0.12).max(1.0);
+        percent_min -= padding;
+        percent_max += padding;
+        let percent_range = (percent_max - percent_min).max(1.0);
+        let percent_to_y =
+            |percent: f64| chart_height - ((percent - percent_min) / percent_range) * chart_height;
+
+        let axis_color = state.options.text_color.with_alpha(0.65);
+        let grid_color = state.options.grid_color.with_alpha(0.45);
+
+        let axis_x = chart_width - 1.0;
+        renderer.draw_line(axis_x, 0.0, axis_x, chart_height, axis_color, 1.0);
+
+        for i in 0..=4 {
+            let percent = percent_min + (percent_range * i as f64 / 4.0);
+            let y = percent_to_y(percent);
+            renderer.draw_horizontal_line(y, chart_width - 42.0, chart_width, &grid_color, 1.0);
+            renderer.draw_text(
+                &format!("{:+.1}%", percent),
+                chart_width - 4.0,
+                y,
+                axis_color,
+                10.0,
+                crate::rendering::TextAlign::Right,
+                crate::rendering::TextBaseline::Middle,
+            );
+        }
+
+        for (idx, (symbol, color, values)) in series.iter().enumerate() {
+            let points: Vec<(f64, f64)> = values
+                .iter()
+                .map(|(time, percent)| (vp.time_to_x(*time), percent_to_y(*percent)))
+                .collect();
+            renderer.draw_polyline(&points, *color, 1.8);
+
+            if let Some((_, latest_percent)) = values.last() {
+                let legend_y = 8.0 + idx as f64 * 15.0;
+                renderer.draw_text(
+                    &format!("{} {:+.2}%", symbol, latest_percent),
+                    8.0,
+                    legend_y,
+                    *color,
+                    11.0,
+                    crate::rendering::TextAlign::Left,
+                    crate::rendering::TextBaseline::Top,
+                );
+            }
+        }
+    }
+
+    fn render_footprint_candles(
+        footprint_candles: &[FootprintCandle],
+        state: &ChartState,
+        renderer: &mut Canvas2DRenderer,
+        candle_width: f64,
+    ) {
+        if footprint_candles.is_empty() || candle_width < 20.0 {
+            return;
+        }
+
+        let vp = &state.viewport;
+        let visible: Vec<&FootprintCandle> = footprint_candles
+            .iter()
+            .filter(|candle| candle.time >= vp.time.start && candle.time <= vp.time.end)
+            .collect();
+        if visible.is_empty() {
+            return;
+        }
+
+        let price_per_pixel =
+            ((vp.price.max - vp.price.min) / vp.dimensions.height as f64).abs().max(0.0000001);
+        let bid_color = crate::primitives::Color::rgba(248, 81, 73, 0.72);
+        let ask_color = crate::primitives::Color::rgba(63, 185, 80, 0.72);
+        let poc_color = crate::primitives::Color::rgba(227, 179, 65, 0.32);
+        let text_color = state.options.text_color.with_alpha(0.78);
+        let slot_w = candle_width * 0.9;
+        let half_slot = slot_w / 2.0;
+        let show_delta_text = candle_width >= 42.0;
+
+        for candle in visible {
+            if candle.levels.is_empty() {
+                continue;
+            }
+
+            let cx = vp.time_to_x(candle.time);
+            let max_vol = candle.max_level_volume().max(1.0);
+            let poc_price = candle.poc_price();
+            let row_height = if candle.levels.len() >= 2 {
+                let step = (candle.levels[1].price - candle.levels[0].price).abs();
+                (step / price_per_pixel).clamp(3.0, 18.0)
+            } else {
+                8.0
+            };
+
+            for level in &candle.levels {
+                let y = vp.price_to_y(level.price);
+                let y_top = y - row_height / 2.0;
+
+                if poc_price == Some(level.price) {
+                    renderer.fill_rect(cx - half_slot, y_top, slot_w, row_height, poc_color);
+                }
+
+                if level.bid_volume > 0.0 {
+                    let width = (level.bid_volume / max_vol) * half_slot;
+                    renderer.fill_rect(
+                        cx - width,
+                        y_top + 1.0,
+                        width,
+                        (row_height - 2.0).max(1.0),
+                        bid_color,
+                    );
+                }
+
+                if level.ask_volume > 0.0 {
+                    let width = (level.ask_volume / max_vol) * half_slot;
+                    renderer.fill_rect(
+                        cx,
+                        y_top + 1.0,
+                        width,
+                        (row_height - 2.0).max(1.0),
+                        ask_color,
+                    );
+                }
+
+                if show_delta_text {
+                    let delta = crate::core::FootprintCandle::level_delta(level);
+                    renderer.draw_text(
+                        &format!("{:+.0}", delta),
+                        cx,
+                        y,
+                        text_color,
+                        8.0,
+                        crate::rendering::TextAlign::Center,
+                        crate::rendering::TextBaseline::Middle,
+                    );
+                }
+            }
+        }
+    }
+
+    fn render_selected_drawing_highlights(state: &ChartState, renderer: &mut Canvas2DRenderer) {
+        if state.selected_drawings.is_empty() {
+            return;
+        }
+
+        let highlight = crate::primitives::Color::rgba(88, 166, 255, 0.95);
+        let fill = crate::primitives::Color::rgba(88, 166, 255, 0.22);
+
+        for tool in state.tool_manager.tools() {
+            if !state
+                .selected_drawings
+                .iter()
+                .any(|id| id == tool.id())
+            {
+                continue;
+            }
+
+            let mut min_x = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+
+            for node in tool.nodes() {
+                let x = state.viewport.time_to_x(node.time);
+                let y = state.viewport.price_to_y(node.price);
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+                renderer.fill_rect(x - 3.0, y - 3.0, 6.0, 6.0, fill);
+                renderer.stroke_rect(x - 3.0, y - 3.0, 6.0, 6.0, highlight, 1.0);
+            }
+
+            if min_x.is_finite() {
+                let pad = 5.0;
+                renderer.stroke_rect(
+                    min_x - pad,
+                    min_y - pad,
+                    (max_x - min_x).max(1.0) + pad * 2.0,
+                    (max_y - min_y).max(1.0) + pad * 2.0,
+                    highlight,
+                    1.0,
+                );
+            }
+        }
+    }
+
+    fn render_indicator_panes(
+        indicator_panes: &[IndicatorPane],
+        state: &ChartState,
+        renderer: &mut Canvas2DRenderer,
+    ) {
+        if indicator_panes.is_empty() || state.candles.len() < 3 {
+            return;
+        }
+
+        let vp = &state.viewport;
+        let width = vp.dimensions.width as f64;
+        let height = vp.dimensions.height as f64;
+        let indicator_total: f64 = indicator_panes.iter().map(|pane| pane.height_fraction).sum();
+        let mut top = height * (1.0 - indicator_total).max(0.38);
+        let bg = state.options.background_color.with_alpha(0.96);
+        let border = state.options.grid_color.with_alpha(0.8);
+        let text = state.options.text_color.with_alpha(0.82);
+
+        for pane in indicator_panes {
+            let pane_h = (height * pane.height_fraction).max(56.0);
+            renderer.fill_rect(0.0, top, width, pane_h, bg);
+            renderer.draw_line(0.0, top, width, top, border, 1.0);
+
+            let series = Self::oscillator_series(&pane.indicator_id, &state.candles);
+            let visible: Vec<(i64, f64)> = series
+                .into_iter()
+                .filter(|(time, value)| {
+                    *time >= vp.time.start && *time <= vp.time.end && value.is_finite()
+                })
+                .collect();
+
+            if visible.len() >= 2 {
+                let mut min_v = visible.iter().map(|(_, v)| *v).fold(f64::INFINITY, f64::min);
+                let mut max_v = visible
+                    .iter()
+                    .map(|(_, v)| *v)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                if matches!(pane.indicator_id.as_str(), "rsi" | "stochastic") {
+                    min_v = 0.0;
+                    max_v = 100.0;
+                } else if pane.indicator_id == "williams_r" {
+                    min_v = -100.0;
+                    max_v = 0.0;
+                }
+                let pad = ((max_v - min_v).abs() * 0.1).max(1.0);
+                min_v -= pad;
+                max_v += pad;
+                let span = (max_v - min_v).max(1.0);
+                let value_to_y = |value: f64| top + pane_h - ((value - min_v) / span) * pane_h;
+                let points: Vec<(f64, f64)> = visible
+                    .iter()
+                    .map(|(time, value)| (vp.time_to_x(*time), value_to_y(*value)))
+                    .collect();
+                renderer.draw_polyline(&points, crate::primitives::Color::rgba(88, 166, 255, 0.95), 1.6);
+
+                for i in 0..=2 {
+                    let value = min_v + span * i as f64 / 2.0;
+                    let y = value_to_y(value);
+                    renderer.draw_line(0.0, y, width, y, state.options.grid_color, 1.0);
+                    renderer.draw_text(
+                        &format!("{:.1}", value),
+                        width - 4.0,
+                        y,
+                        text,
+                        9.0,
+                        crate::rendering::TextAlign::Right,
+                        crate::rendering::TextBaseline::Middle,
+                    );
+                }
+            }
+
+            renderer.draw_text(
+                &pane.indicator_id.to_uppercase(),
+                8.0,
+                top + 6.0,
+                text,
+                10.0,
+                crate::rendering::TextAlign::Left,
+                crate::rendering::TextBaseline::Top,
+            );
+            top += pane_h;
+        }
+    }
+
+    fn oscillator_series(indicator_id: &str, candles: &[Candle]) -> Vec<(i64, f64)> {
+        let closes: Vec<f64> = candles.iter().map(|c| c.c).collect();
+        let highs: Vec<f64> = candles.iter().map(|c| c.h).collect();
+        let lows: Vec<f64> = candles.iter().map(|c| c.l).collect();
+        let values = match indicator_id {
+            "macd" => {
+                let (macd, _signal, histogram) = crate::ta::momentum::macd(&closes, 12, 26, 9);
+                histogram
+                    .into_iter()
+                    .zip(macd)
+                    .map(|(hist, macd)| hist.or(macd))
+                    .collect()
+            }
+            "stochastic" => {
+                let (k, _d) = crate::ta::momentum::stochastic(&highs, &lows, &closes, 14, 3, 3);
+                k
+            }
+            "cci" => crate::ta::momentum::cci(&highs, &lows, &closes, 20),
+            "williams_r" => crate::ta::momentum::williams_r(&highs, &lows, &closes, 14),
+            _ => crate::ta::momentum::rsi(&closes, 14),
+        };
+        candles
+            .iter()
+            .zip(values)
+            .filter_map(|(candle, value)| value.map(|v| (candle.time, v)))
+            .collect()
     }
 
     /// Resize the chart
@@ -305,6 +800,7 @@ impl WasmChart {
             "hollow" => crate::primitives::CandleStyle::Hollow,
             "line" => crate::primitives::CandleStyle::Line,
             "area" => crate::primitives::CandleStyle::Area,
+            "footprint" => crate::primitives::CandleStyle::Footprint,
             s if s.starts_with("renko") => {
                 // Accept "renko" (default brick) or "renko:5.0"
                 let brick_size = if let Some(rest) = s.strip_prefix("renko:") {
@@ -316,12 +812,13 @@ impl WasmChart {
             }
             _ => {
                 return Err(JsValue::from_str(
-                    "Invalid candle style. Use: candlestick, ohlc, hollow, line, area, or renko[:brick_size]",
+                    "Invalid candle style. Use: candlestick, ohlc, hollow, line, area, footprint, or renko[:brick_size]",
                 ))
             }
         };
 
         self.state.options.candle_style = candle_style;
+        self.footprint_enabled = candle_style == crate::primitives::CandleStyle::Footprint;
         self.state.mark_dirty();
         Ok(())
     }
@@ -631,6 +1128,14 @@ impl WasmChart {
                         renderer.stroke_rect(x - w / 2.0, top_y, w, height, unchanged_color, 0.5);
                     }
                 }
+                crate::primitives::CandleStyle::Footprint => {
+                    Self::render_footprint_candles(
+                        &self.footprint_candles,
+                        &self.state,
+                        renderer,
+                        bar_width / pixel_ratio,
+                    );
+                }
                 _ => {
                     for candle in render_candles {
                         let x = vp.time_to_x(candle.time);
@@ -726,6 +1231,11 @@ impl WasmChart {
             }
         }
 
+        // Draw comparison symbols as percent-performance overlays with their
+        // own right-side scale.
+        Self::render_compare_symbols(&self.compare_symbols, &self.state, renderer);
+        Self::render_indicator_panes(&self.indicator_panes, &self.state, renderer);
+
         // Draw drawing tools
         {
             let vp = &self.state.viewport;
@@ -735,6 +1245,8 @@ impl WasmChart {
                 tool.render(renderer, vp);
             }
         }
+
+        Self::render_selected_drawing_highlights(&self.state, renderer);
 
         // Draw crosshair with pixel-perfect rendering
         if self.state.options.show_crosshair && self.state.crosshair.visible {
@@ -898,6 +1410,7 @@ impl WasmChart {
     pub fn clear_tools(&mut self) -> Result<(), JsValue> {
         self._push_undo();
         self.state.tool_manager.clear();
+        self.state.selected_drawings.clear();
         self.state.mark_dirty();
         Ok(())
     }
@@ -1002,6 +1515,238 @@ impl WasmChart {
             .collect();
 
         format!("[{}]", tools.join(","))
+    }
+
+    /// Select drawing at canvas position. If additive is true, toggles membership.
+    #[wasm_bindgen(js_name = selectDrawingAt)]
+    pub fn select_drawing_at(&mut self, x: f64, y: f64, additive: bool) -> bool {
+        let hit_id = self
+            .state
+            .tool_manager
+            .hit_test(x, y, &self.state.viewport)
+            .map(|id| id.to_string());
+
+        let Some(id) = hit_id else {
+            if !additive {
+                self.state.selected_drawings.clear();
+                self.state.mark_dirty();
+            }
+            return false;
+        };
+
+        if additive {
+            if let Some(pos) = self
+                .state
+                .selected_drawings
+                .iter()
+                .position(|selected| selected == &id)
+            {
+                self.state.selected_drawings.remove(pos);
+            } else {
+                self.state.selected_drawings.push(id);
+            }
+        } else {
+            self.state.selected_drawings = vec![id];
+        }
+        self.state.mark_dirty();
+        true
+    }
+
+    /// Select all drawings whose nodes are fully inside a screen-space rectangle.
+    #[wasm_bindgen(js_name = selectDrawingsInRect)]
+    pub fn select_drawings_in_rect(
+        &mut self,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        additive: bool,
+    ) -> String {
+        let left = x1.min(x2);
+        let right = x1.max(x2);
+        let top = y1.min(y2);
+        let bottom = y1.max(y2);
+
+        let mut selected = if additive {
+            self.state.selected_drawings.clone()
+        } else {
+            Vec::new()
+        };
+
+        for tool in self.state.tool_manager.tools() {
+            if !tool.is_complete() || tool.nodes().is_empty() {
+                continue;
+            }
+            let inside = tool.nodes().iter().all(|node| {
+                let x = self.state.viewport.time_to_x(node.time);
+                let y = self.state.viewport.price_to_y(node.price);
+                x >= left && x <= right && y >= top && y <= bottom
+            });
+            if inside && !selected.iter().any(|id| id == tool.id()) {
+                selected.push(tool.id().to_string());
+            }
+        }
+
+        self.state.selected_drawings = selected;
+        self.state.mark_dirty();
+        self.get_selected_drawings()
+    }
+
+    /// Start bulk-dragging selected drawings from a canvas position.
+    #[wasm_bindgen(js_name = startSelectedDrawingsDrag)]
+    pub fn start_selected_drawings_drag(&mut self, x: f64, y: f64) -> bool {
+        if self.state.selected_drawings.is_empty() {
+            return false;
+        }
+        self._push_undo();
+        self.drawing_drag_anchor = Some((
+            self.state.viewport.x_to_time(x),
+            self.state.viewport.y_to_price(y),
+        ));
+        true
+    }
+
+    /// Move all selected drawings to follow the current canvas position.
+    #[wasm_bindgen(js_name = dragSelectedDrawingsTo)]
+    pub fn drag_selected_drawings_to(&mut self, x: f64, y: f64) {
+        let Some((last_time, last_price)) = self.drawing_drag_anchor else {
+            return;
+        };
+        let next_time = self.state.viewport.x_to_time(x);
+        let next_price = self.state.viewport.y_to_price(y);
+        let dt = next_time - last_time;
+        let dp = next_price - last_price;
+        self.state
+            .tool_manager
+            .move_many(&self.state.selected_drawings, dt, dp);
+        self.drawing_drag_anchor = Some((next_time, next_price));
+        self.state.mark_dirty();
+    }
+
+    /// End a bulk drawing drag.
+    #[wasm_bindgen(js_name = endSelectedDrawingsDrag)]
+    pub fn end_selected_drawings_drag(&mut self) {
+        self.drawing_drag_anchor = None;
+    }
+
+    /// Delete all selected drawings as one undoable operation.
+    #[wasm_bindgen(js_name = deleteSelectedDrawings)]
+    pub fn delete_selected_drawings(&mut self) -> usize {
+        if self.state.selected_drawings.is_empty() {
+            return 0;
+        }
+        self._push_undo();
+        let deleted = self
+            .state
+            .tool_manager
+            .remove_many(&self.state.selected_drawings);
+        self.state.selected_drawings.clear();
+        self.state.mark_dirty();
+        deleted
+    }
+
+    /// Return selected drawing IDs as JSON.
+    #[wasm_bindgen(js_name = getSelectedDrawings)]
+    pub fn get_selected_drawings(&self) -> String {
+        serde_json::to_string(&self.state.selected_drawings).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Create or replace an indicator pane. Returns the pane ID.
+    #[wasm_bindgen(js_name = addIndicatorPane)]
+    pub fn add_indicator_pane(&mut self, indicator_id: &str, params_json: &str) -> String {
+        let pane_id = format!("pane-{}", indicator_id.trim());
+        if let Some(pane) = self
+            .indicator_panes
+            .iter_mut()
+            .find(|pane| pane.indicator_id == indicator_id)
+        {
+            pane.params_json = params_json.to_string();
+            self.state.mark_dirty();
+            return pane.pane_id.clone();
+        }
+
+        self.indicator_panes.push(IndicatorPane {
+            pane_id: pane_id.clone(),
+            indicator_id: indicator_id.to_string(),
+            params_json: params_json.to_string(),
+            height_fraction: 0.28,
+        });
+        self.normalize_indicator_panes();
+        self.state.mark_dirty();
+        pane_id
+    }
+
+    /// Remove an indicator pane by pane ID.
+    #[wasm_bindgen(js_name = removePane)]
+    pub fn remove_pane(&mut self, pane_id: &str) -> bool {
+        let before = self.indicator_panes.len();
+        self.indicator_panes
+            .retain(|pane| pane.pane_id != pane_id && pane.indicator_id != pane_id);
+        let changed = before != self.indicator_panes.len();
+        if changed {
+            self.normalize_indicator_panes();
+            self.state.mark_dirty();
+        }
+        changed
+    }
+
+    /// Set one pane height fraction, then normalize all panes.
+    #[wasm_bindgen(js_name = setPaneHeightFraction)]
+    pub fn set_pane_height_fraction(&mut self, pane_id: &str, fraction: f64) {
+        if let Some(pane) = self
+            .indicator_panes
+            .iter_mut()
+            .find(|pane| pane.pane_id == pane_id || pane.indicator_id == pane_id)
+        {
+            pane.height_fraction = fraction.clamp(0.14, 0.5);
+            self.normalize_indicator_panes();
+            self.state.mark_dirty();
+        }
+    }
+
+    /// Return pane layout as JSON with main + indicator fractions.
+    #[wasm_bindgen(js_name = getPaneLayout)]
+    pub fn get_pane_layout(&self) -> String {
+        serde_json::to_string(&self.pane_layout_json()).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    fn normalize_indicator_panes(&mut self) {
+        if self.indicator_panes.is_empty() {
+            return;
+        }
+        let max_indicator_total = 0.62_f64;
+        let total: f64 = self
+            .indicator_panes
+            .iter()
+            .map(|pane| pane.height_fraction)
+            .sum();
+        if total <= max_indicator_total {
+            return;
+        }
+        for pane in &mut self.indicator_panes {
+            pane.height_fraction = pane.height_fraction / total * max_indicator_total;
+        }
+    }
+
+    fn pane_layout_json(&self) -> Vec<serde_json::Value> {
+        let indicator_total: f64 = self
+            .indicator_panes
+            .iter()
+            .map(|pane| pane.height_fraction)
+            .sum();
+        let mut panes = vec![serde_json::json!({
+            "id": "main",
+            "indicatorId": "price",
+            "heightFraction": (1.0 - indicator_total).max(0.38),
+        })];
+        panes.extend(self.indicator_panes.iter().map(|pane| {
+            serde_json::json!({
+                "id": pane.pane_id,
+                "indicatorId": pane.indicator_id,
+                "heightFraction": pane.height_fraction,
+            })
+        }));
+        panes
     }
 
     // ========== Price Scale Interaction API ==========

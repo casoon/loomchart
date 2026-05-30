@@ -17,6 +17,8 @@ pub enum CandleStyle {
     Line,
     /// Filled area below close-price line
     Area,
+    /// Footprint candles with bid/ask volume levels
+    Footprint,
     /// Renko bricks — each brick covers `brick_size` price units
     Renko { brick_size: f64 },
 }

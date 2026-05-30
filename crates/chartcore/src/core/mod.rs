@@ -10,6 +10,7 @@ mod chart_renderer;
 mod chart_state;
 mod config;
 mod events;
+pub mod footprint;
 mod generator;
 mod indicator_renderer;
 mod invalidation;
@@ -32,6 +33,7 @@ pub use chart_renderer::{ChartRenderer, ChartTheme};
 pub use chart_state::{ChartOptions, ChartState, CrosshairState, InteractionState, MagnetMode};
 pub use config::ChartConfig;
 pub use events::{EventHandler, KeyboardEvent, MouseButton, MouseEvent, TouchEvent};
+pub use footprint::{FootprintCandle, FootprintConfig, FootprintLevel, FootprintRenderer};
 pub use generator::{
     CandleGenerator, GeneratorConfig, MarketType, Scenario, Trend, VolatilityRegime,
 };
