@@ -10,6 +10,20 @@ import { errorBoundary, wrapAsync } from "./error-boundary";
 import { loadingState, withLoading } from "./loading-state";
 import { StreamHandler } from "./stream-handler";
 import { stateManager } from "./state-manager";
+import { initWasmBridge, convertCandle } from "./wasm-bridge";
+import { initNotificationBridge } from "./notification-bridge";
+import { initIndicatorBridge } from "./indicator-bridge";
+import {
+  initCrosshairBridge,
+  destroyCrosshairBridge,
+} from "./crosshair-bridge";
+import {
+  connectionStatus as connectionStatusStore,
+  lastCandle as lastCandleStore,
+  candles as candlesStore,
+  candleCount as candleCountStore,
+  type OhlcvCandle,
+} from "../stores/chart";
 
 // Use REST API
 const API_URL =
@@ -151,6 +165,12 @@ export function initTradingApp(): TradingAppState {
         // Initialize chart
         await this.initChart();
 
+        // Wire WASM events into Svelte stores before any event can fire
+        initWasmBridge();
+        initNotificationBridge();
+        initIndicatorBridge();
+        initCrosshairBridge();
+
         // Initialize realtime or fetch static data
         if (this.useRealtime) {
           this.initRealtime();
@@ -234,6 +254,7 @@ export function initTradingApp(): TradingAppState {
                 if (this.rustChart) {
                   this.rustChart.addCandle(candle);
                   this.lastCandle = candle;
+                  lastCandleStore.set(candle);
                 }
               },
               (countdown) => {
@@ -338,15 +359,7 @@ export function initTradingApp(): TradingAppState {
       window.addEventListener("candleUpdate", ((
         e: CustomEvent<{ candle: any; isFinal: boolean }>,
       ) => {
-        const c = e.detail.candle;
-        const candle: Candle = {
-          time: Math.floor(new Date(c.ts).getTime() / 1000),
-          o: c.o,
-          h: c.h,
-          l: c.l,
-          c: c.c,
-          v: c.v || 0,
-        };
+        const candle = convertCandle(e.detail.candle);
 
         // Process through stream handler for proper time rounding and countdown
         if (this.streamHandler) {
@@ -354,6 +367,7 @@ export function initTradingApp(): TradingAppState {
         } else {
           // Fallback: direct update
           this.lastCandle = candle;
+          lastCandleStore.set(candle);
           if (this.rustChart) {
             this.rustChart.addCandle(candle);
           }
@@ -406,20 +420,13 @@ export function initTradingApp(): TradingAppState {
           const json = await response.json();
           const rawCandles = json.data || [];
 
-          // Convert API format to Rust format
-          // API returns: { ts: "2024-01-15T10:00:00.000000Z", o, h, l, c, v, ... }
-          // IMPORTANT: Rust expects Unix timestamp in SECONDS, not milliseconds
-          this.candles = rawCandles.map((c: any) => ({
-            time: c.ts ? Math.floor(new Date(c.ts).getTime() / 1000) : 0, // Convert to seconds
-            o: c.o,
-            h: c.h,
-            l: c.l,
-            c: c.c,
-            v: c.v || 0,
-          }));
-
+          this.candles = rawCandles.map(convertCandle);
           this.candleCount = this.candles.length;
           this.lastCandle = this.candles[this.candles.length - 1] || null;
+
+          candlesStore.set(this.candles);
+          candleCountStore.set(this.candleCount);
+          lastCandleStore.set(this.lastCandle);
 
           // Update Rust chart with candles
           if (this.rustChart && this.candles.length > 0) {
@@ -433,10 +440,12 @@ export function initTradingApp(): TradingAppState {
           }
 
           this.connectionStatus = "connected";
+          connectionStatusStore.set("connected");
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
           this.error = err.message;
           this.connectionStatus = "error";
+          connectionStatusStore.set("error");
           errorBoundary.handleError(err, "Network");
         } finally {
           this.loading = false;
@@ -542,6 +551,10 @@ export function initTradingApp(): TradingAppState {
           this.candleCount = candles.length;
           this.lastCandle = candles[candles.length - 1];
 
+          candlesStore.set(candles);
+          candleCountStore.set(candles.length);
+          lastCandleStore.set(this.lastCandle);
+
           console.log("[App] Generated test data:", {
             count: candles.length,
             firstCandle: candles[0],
@@ -559,6 +572,7 @@ export function initTradingApp(): TradingAppState {
           }
 
           this.connectionStatus = "connected";
+          connectionStatusStore.set("connected");
           console.log("[App] Test data loaded, status set to connected");
 
           // Start persistent data stream (realistic timing based on timeframe)
@@ -597,6 +611,8 @@ export function initTradingApp(): TradingAppState {
             this.candles.push(newCandle);
             this.lastCandle = newCandle;
             this.candleCount = this.candles.length;
+            lastCandleStore.set(newCandle);
+            candleCountStore.set(this.candleCount);
             currentPrice = close;
 
             // Update chart
@@ -618,6 +634,7 @@ export function initTradingApp(): TradingAppState {
           const err = error instanceof Error ? error : new Error(String(error));
           this.error = err.message;
           this.connectionStatus = "error";
+          connectionStatusStore.set("error");
           errorBoundary.handleError(err, "TestData");
         } finally {
           this.loading = false;
@@ -662,6 +679,9 @@ export function initTradingApp(): TradingAppState {
     destroy() {
       // Stop test data stream if running
       this.stopTestDataStream();
+
+      // Stop the crosshair/viewport rAF loop
+      destroyCrosshairBridge();
 
       if (this.rustChart) {
         this.rustChart.destroy();
