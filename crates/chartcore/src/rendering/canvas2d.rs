@@ -6,6 +6,9 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wasm")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(feature = "wasm")]
+use js_sys;
+
 use super::renderer::{RenderCommand, Renderer, TextAlign, TextBaseline};
 use crate::canvas::{BitmapSpace, CssPixels, DevicePixels, MediaSpace, PixelRatio};
 use crate::primitives::Color;
@@ -405,6 +408,46 @@ impl Renderer for Canvas2DRenderer {
         }
     }
 
+    fn draw_indicator_line(
+        &mut self,
+        points: &[(f64, f64)],
+        color: Color,
+        width: f32,
+        style: super::renderer::LineStyle,
+    ) {
+        if points.len() < 2 {
+            return;
+        }
+        let dash_array = js_sys::Array::new();
+        match style {
+            super::renderer::LineStyle::Solid => {
+                self.ctx.set_line_dash(&js_sys::Array::new()).ok();
+            }
+            super::renderer::LineStyle::Dashed {
+                dash_length,
+                gap_length,
+            } => {
+                dash_array.push(&(dash_length as f64).into());
+                dash_array.push(&(gap_length as f64).into());
+                self.ctx.set_line_dash(&dash_array).ok();
+            }
+            super::renderer::LineStyle::Dotted => {
+                dash_array.push(&(2.0_f64).into());
+                dash_array.push(&(3.0_f64).into());
+                self.ctx.set_line_dash(&dash_array).ok();
+            }
+        }
+        self.set_stroke_color(color);
+        self.ctx.set_line_width(width as f64);
+        self.ctx.begin_path();
+        self.ctx.move_to(points[0].0, points[0].1);
+        for &(x, y) in &points[1..] {
+            self.ctx.line_to(x, y);
+        }
+        self.ctx.stroke();
+        self.ctx.set_line_dash(&js_sys::Array::new()).ok();
+    }
+
     fn set_clip(&mut self, x: f64, y: f64, width: f64, height: f64) {
         self.ctx.save();
         self.ctx.begin_path();
@@ -505,6 +548,27 @@ impl Canvas2DRenderer {
             .arc(x, y, radius, 0.0, 2.0 * std::f64::consts::PI)
             .unwrap_or_default();
         self.ctx.fill();
+    }
+
+    /// Fill an ellipse defined by center (cx, cy) and radii (rx, ry)
+    pub fn fill_ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, color: Color) {
+        self.set_fill_color(color);
+        self.ctx.begin_path();
+        self.ctx
+            .ellipse(cx, cy, rx, ry, 0.0, 0.0, 2.0 * std::f64::consts::PI)
+            .unwrap_or_default();
+        self.ctx.fill();
+    }
+
+    /// Stroke an ellipse defined by center (cx, cy) and radii (rx, ry)
+    pub fn stroke_ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, color: Color, width: f32) {
+        self.set_stroke_color(color);
+        self.ctx.set_line_width(width as f64);
+        self.ctx.begin_path();
+        self.ctx
+            .ellipse(cx, cy, rx, ry, 0.0, 0.0, 2.0 * std::f64::consts::PI)
+            .unwrap_or_default();
+        self.ctx.stroke();
     }
 
     // ===== Coordinate-Aware Rendering Methods =====

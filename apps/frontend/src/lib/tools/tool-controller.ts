@@ -8,6 +8,9 @@ export enum ToolType {
   TrendLine = "trendline",
   HorizontalLine = "horizontal",
   VerticalLine = "vertical",
+  Rectangle = "rectangle",
+  Fibonacci = "fibonacci",
+  Ellipse = "ellipse",
 }
 
 export interface ToolDefinition {
@@ -77,6 +80,7 @@ export class ToolController {
     ]);
 
     this.setupEventListeners();
+    this.listenToSidebar();
   }
 
   private setupEventListeners(): void {
@@ -88,6 +92,30 @@ export class ToolController {
 
     this.listeners.set("click", clickHandler);
     this.listeners.set("mousemove", moveHandler);
+  }
+
+  private listenToSidebar(): void {
+    const toolMap: Record<string, ToolType> = {
+      cursor: ToolType.Cursor,
+      trendline: ToolType.TrendLine,
+      horizontal: ToolType.HorizontalLine,
+      hline: ToolType.HorizontalLine,
+      vertical: ToolType.VerticalLine,
+      vline: ToolType.VerticalLine,
+      rectangle: ToolType.Rectangle,
+      rect: ToolType.Rectangle,
+      fibonacci: ToolType.Fibonacci,
+      fib: ToolType.Fibonacci,
+      ellipse: ToolType.Ellipse,
+    };
+
+    window.addEventListener("drawing-tool-changed", ((e: CustomEvent) => {
+      const tool = e.detail?.tool as string;
+      const type = toolMap[tool];
+      if (type !== undefined) {
+        this.activateTool(type);
+      }
+    }) as EventListener);
   }
 
   /**
@@ -182,6 +210,15 @@ export class ToolController {
       case ToolType.VerticalLine:
         this.placeVerticalLine(time, price);
         break;
+      case ToolType.Rectangle:
+        this.placeTwoPointTool(time, price, "rectangle");
+        break;
+      case ToolType.Fibonacci:
+        this.placeTwoPointTool(time, price, "fibonacci");
+        break;
+      case ToolType.Ellipse:
+        this.placeTwoPointTool(time, price, "ellipse");
+        break;
     }
   }
 
@@ -253,6 +290,37 @@ export class ToolController {
 
     // Return to cursor after placing
     this.deactivateTool();
+  }
+
+  /**
+   * Place a two-point tool: rectangle, fibonacci, ellipse (requires 2 clicks)
+   */
+  private placeTwoPointTool(time: number, price: number, kind: string): void {
+    if (!this.isPlacing) {
+      this.currentToolId = `${kind}_${Date.now()}`;
+      this.isPlacing = true;
+      this.firstNode = { time, price };
+      console.log(`${kind} started at time=${time}, price=${price}`);
+    } else {
+      if (this.currentToolId && this.firstNode) {
+        try {
+          const id = this.currentToolId;
+          const t1 = BigInt(this.firstNode.time);
+          const p1 = this.firstNode.price;
+          const t2 = BigInt(time);
+          const p2 = price;
+          if (kind === "rectangle") this.wasmChart.createRectangle?.(id, t1, p1, t2, p2);
+          else if (kind === "fibonacci") this.wasmChart.createFibonacci?.(id, t1, p1, t2, p2);
+          else if (kind === "ellipse") this.wasmChart.createEllipse?.(id, t1, p1, t2, p2);
+          console.log(`${kind} created: ${id}`);
+        } catch (error) {
+          console.error(`Failed to create ${kind}:`, error);
+        }
+      }
+      this.isPlacing = false;
+      this.firstNode = null;
+      this.deactivateTool();
+    }
   }
 
   /**

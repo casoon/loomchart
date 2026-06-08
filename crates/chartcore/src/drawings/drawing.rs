@@ -19,6 +19,7 @@ pub enum DrawingType {
     VerticalLine,
     Rectangle,
     FibonacciRetracement,
+    Ellipse,
 }
 
 /// Point in chart space (logical coordinates)
@@ -132,6 +133,7 @@ impl Drawing {
             DrawingType::VerticalLine => 1,
             DrawingType::Rectangle => 2,
             DrawingType::FibonacciRetracement => 2,
+            DrawingType::Ellipse => 2,
         };
 
         self.points.len() >= min_points

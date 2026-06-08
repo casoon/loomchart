@@ -58,7 +58,10 @@ impl DrawingManager {
 
         // For most drawings, we only need 2 points
         match drawing.drawing_type {
-            DrawingType::TrendLine | DrawingType::Rectangle | DrawingType::FibonacciRetracement => {
+            DrawingType::TrendLine
+            | DrawingType::Rectangle
+            | DrawingType::FibonacciRetracement
+            | DrawingType::Ellipse => {
                 if drawing.points.len() == 1 {
                     drawing.points.push(point);
                 } else {
@@ -188,6 +191,7 @@ impl DrawingManager {
             DrawingType::FibonacciRetracement => {
                 self.hit_test_fibonacci(&drawing.points, x, y, tolerance)
             }
+            DrawingType::Ellipse => self.hit_test_rectangle(&drawing.points, x, y, tolerance),
         }
     }
 

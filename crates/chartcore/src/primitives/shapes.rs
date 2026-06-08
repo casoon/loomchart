@@ -4,7 +4,7 @@
 pub use crate::core::Point;
 
 /// Candle rendering style
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "wasm", derive(serde::Serialize, serde::Deserialize))]
 pub enum CandleStyle {
     /// Traditional candlestick with filled body
@@ -17,6 +17,10 @@ pub enum CandleStyle {
     Line,
     /// Filled area below close-price line
     Area,
+    /// Footprint candles with bid/ask volume levels
+    Footprint,
+    /// Renko bricks — each brick covers `brick_size` price units
+    Renko { brick_size: f64 },
 }
 
 impl Default for CandleStyle {

@@ -328,6 +328,14 @@ const icons: Record<string, string> = {
     const on = btn.classList.toggle('active');
     const ctl = btn.dataset.ctl;
     window.dispatchEvent(new CustomEvent('drawing-control-changed', { detail: { control: ctl, enabled: on } }));
+
+    // Wire magnet button to WASM setMagnetMode
+    if (ctl === 'magnet') {
+      const chart = window.rustChart || window.getWasm?.() || window.__loomChart;
+      if (chart?.setMagnetMode) {
+        try { chart.setMagnetMode(on ? 'weak' : 'off'); } catch (_) {}
+      }
+    }
   };
 
   window.sbToggleStyle = function (btn) {

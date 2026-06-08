@@ -256,6 +256,66 @@ impl Timeframe {
     }
 }
 
+/// Session configuration for trading session markers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    pub name: String,
+    /// Open time: (hour, minute) in UTC
+    pub open_utc: (u8, u8),
+    /// Close time: (hour, minute) in UTC
+    pub close_utc: (u8, u8),
+    /// RGBA color tuple
+    pub color: (u8, u8, u8, u8),
+    pub show_open: bool,
+    pub show_close: bool,
+}
+
+impl SessionConfig {
+    pub fn nyse() -> Self {
+        Self {
+            name: "NYSE".to_string(),
+            open_utc: (14, 30),
+            close_utc: (21, 0),
+            color: (59, 130, 246, 40),
+            show_open: true,
+            show_close: true,
+        }
+    }
+
+    pub fn london() -> Self {
+        Self {
+            name: "London".to_string(),
+            open_utc: (8, 0),
+            close_utc: (16, 30),
+            color: (16, 185, 129, 40),
+            show_open: true,
+            show_close: true,
+        }
+    }
+
+    pub fn tokyo() -> Self {
+        Self {
+            name: "Tokyo".to_string(),
+            open_utc: (0, 0),
+            close_utc: (6, 0),
+            color: (245, 158, 11, 40),
+            show_open: true,
+            show_close: true,
+        }
+    }
+
+    pub fn sydney() -> Self {
+        Self {
+            name: "Sydney".to_string(),
+            open_utc: (22, 0),
+            close_utc: (7, 0),
+            color: (239, 68, 68, 40),
+            show_open: true,
+            show_close: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

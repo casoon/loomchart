@@ -29,6 +29,10 @@ export class WasmChart {
    */
   onMouseUp(x: number, y: number, button: number): void;
   /**
+   * Remove an indicator pane by pane ID.
+   */
+  removePane(pane_id: string): boolean;
+  /**
    * Remove a tool by ID
    */
   removeTool(id: string): void;
@@ -52,6 +56,18 @@ export class WasmChart {
    * Handle touch end
    */
   onTouchEnd(x: number, y: number): void;
+  /**
+   * Set trading session configurations from JSON array.
+   * Each session: `{ name, open_utc: [h,m], close_utc: [h,m], color: [r,g,b,a], show_open, show_close }`
+   * Pass an empty array `[]` to clear sessions.
+   * Pass `"default"` as the string to load NYSE, London, Tokyo, Sydney presets.
+   */
+  setSessions(sessions_json: string): void;
+  /**
+   * Set timezone offset in minutes from UTC.
+   * Examples: 60 = UTC+1, -300 = UTC-5, 540 = UTC+9, 0 = UTC
+   */
+  setTimezone(offset_minutes: number): void;
   /**
    * Attach a canvas element for rendering
    */
@@ -77,9 +93,24 @@ export class WasmChart {
    */
   setLogScale(enabled: boolean): void;
   /**
+   * Merge new candles into the existing dataset (delegates to CandleBuffer::append).
+   *
+   * Existing candles are kept; incoming candles are sorted and deduped.
+   * Duplicate timestamps are overwritten by the incoming value.
+   */
+  appendCandles(candles_json: string): void;
+  /**
+   * Create an ellipse drawing tool (bounding box defined by two corner points)
+   */
+  createEllipse(id: string, t1: bigint, p1: number, t2: bigint, p2: number): void;
+  /**
    * End time scaling - user released mouse
    */
   endTimeScale(): void;
+  /**
+   * Get current scale mode as string
+   */
+  getScaleMode(): string;
   /**
    * Handle mouse leave event
    */
@@ -97,9 +128,26 @@ export class WasmChart {
    */
   scalePriceTo(y: number): void;
   /**
+   * Set price scale display mode.
+   * `mode` must be one of: "price", "log", "percent", "indexed"
+   */
+  setScaleMode(mode: string): void;
+  /**
    * End price scaling - user released mouse
    */
   endPriceScale(): void;
+  /**
+   * Get current bar spacing extra value
+   */
+  getBarSpacing(): number;
+  /**
+   * Get current magnet mode as string
+   */
+  getMagnetMode(): string;
+  /**
+   * Return pane layout as JSON with main + indicator fractions.
+   */
+  getPaneLayout(): string;
   /**
    * Query current price axis lock state
    */
@@ -108,6 +156,23 @@ export class WasmChart {
    * Handle double click event
    */
   onDoubleClick(x: number, y: number): void;
+  /**
+   * Set additional bar spacing in CSS pixels (positive = wider bars, negative = narrower)
+   */
+  setBarSpacing(extra_px: number): void;
+  /**
+   * Set the magnet/snap mode for drawing tool placement.
+   * `mode` must be one of: "off", "weak", "strong"
+   */
+  setMagnetMode(mode: string): void;
+  /**
+   * Create a Fibonacci retracement drawing tool
+   */
+  createFibonacci(id: string, t1: bigint, p1: number, t2: bigint, p2: number): void;
+  /**
+   * Create a rectangle drawing tool
+   */
+  createRectangle(id: string, t1: bigint, p1: number, t2: bigint, p2: number): void;
   /**
    * Reset time scale to fit all data (double-click)
    */
@@ -126,6 +191,10 @@ export class WasmChart {
    */
   startTimeScale(x: number): void;
   /**
+   * Create a text label drawing tool
+   */
+  createTextLabel(id: string, time: bigint, price: number, text: string): void;
+  /**
    * Create a new trend line tool
    */
   createTrendLine(id: string, start_time: bigint, start_price: number, end_time: bigint, end_price: number): void;
@@ -138,9 +207,32 @@ export class WasmChart {
    */
   resetPriceScale(): void;
   /**
+   * Select drawing at canvas position. If additive is true, toggles membership.
+   */
+  selectDrawingAt(x: number, y: number, additive: boolean): boolean;
+  /**
+   * Replace all candles (delegates to CandleBuffer::snapshot).
+   *
+   * Backward-compatible alias for `setCandles`; both methods accept the
+   * same JSON format.
+   */
+  setCandlesBatch(candles_json: string): void;
+  /**
+   * Show or hide session marker lines
+   */
+  setShowSessions(show: boolean): void;
+  /**
    * Start price scaling - user pressed mouse on price axis
    */
   startPriceScale(y: number): void;
+  /**
+   * Add or replace a comparison symbol rendered as normalized percent performance.
+   */
+  addCompareSymbol(symbol: string, candles_json: string, color: string): void;
+  /**
+   * Create or replace an indicator pane. Returns the pane ID.
+   */
+  addIndicatorPane(indicator_id: string, params_json: string): string;
   /**
    * Get crosshair position as JSON
    */
@@ -150,9 +242,59 @@ export class WasmChart {
    */
   getOHLCFormatted(): any;
   /**
+   * Replace footprint candle data.
+   */
+  setFootprintData(candles_json: string): void;
+  /**
+   * Return active comparison symbols as JSON.
+   */
+  getCompareSymbols(): string;
+  /**
+   * Get current timezone offset in minutes
+   */
+  getTimezoneOffset(): number;
+  /**
+   * Set bar width ratio (0.0 = auto, 0.1–0.95 = explicit fraction of slot)
+   */
+  setBarWidthRatio(ratio: number): void;
+  /**
+   * Snap a (time, price) coordinate to the nearest OHLC point when magnet is active.
+   * Returns JSON: `{ time: i64, price: f64, snapped: bool }`
+   */
+  snapToCandle(time: bigint, price: number): any;
+  /**
+   * Append or replace one footprint candle by timestamp.
+   */
+  addFootprintCandle(candle_json: string): void;
+  /**
    * Create a new vertical line tool
    */
   createVerticalLine(id: string, time: bigint): void;
+  /**
+   * Set candle style, including Renko with brick size.
+   * For renko: pass "renko" and provide brick_size > 0.
+   */
+  setRenkoBrickSize(brick_size: number): void;
+  /**
+   * Return selected drawing IDs as JSON.
+   */
+  getSelectedDrawings(): string;
+  /**
+   * Remove a comparison symbol.
+   */
+  removeCompareSymbol(symbol: string): void;
+  /**
+   * Enable or disable footprint rendering.
+   */
+  setFootprintEnabled(enabled: boolean): void;
+  /**
+   * Upsert a single candle by timestamp (delegates to CandleBuffer::update_running).
+   *
+   * Accepts a JSON object representing one candle.  If a candle with the
+   * same `time` already exists it is replaced in-place; otherwise it is
+   * inserted at the correct sorted position.
+   */
+  updateRunningCandle(candle_json: string): void;
   /**
    * Create a new horizontal line tool
    */
@@ -162,9 +304,41 @@ export class WasmChart {
    */
   getCandleAtPosition(x: number, y: number): any;
   /**
+   * Select all drawings whose nodes are fully inside a screen-space rectangle.
+   */
+  selectDrawingsInRect(x1: number, y1: number, x2: number, y2: number, additive: boolean): string;
+  /**
+   * Delete all selected drawings as one undoable operation.
+   */
+  deleteSelectedDrawings(): number;
+  /**
+   * Set one pane height fraction, then normalize all panes.
+   */
+  setPaneHeightFraction(pane_id: string, fraction: number): void;
+  /**
+   * Move all selected drawings to follow the current canvas position.
+   */
+  dragSelectedDrawingsTo(x: number, y: number): void;
+  /**
+   * End a bulk drawing drag.
+   */
+  endSelectedDrawingsDrag(): void;
+  /**
+   * Start bulk-dragging selected drawings from a canvas position.
+   */
+  startSelectedDrawingsDrag(x: number, y: number): boolean;
+  /**
    * Create a new chart instance
    */
   constructor(width: number, height: number, timeframe: string);
+  /**
+   * Redo the last undone drawing action. Returns true if there was something to redo.
+   */
+  redo(): boolean;
+  /**
+   * Undo the last drawing action. Returns true if there was something to undo.
+   */
+  undo(): boolean;
   /**
    * Render the chart
    */
@@ -297,66 +471,6 @@ export class WasmShannonEntropy {
 }
 
 /**
- * Add an overlay indicator to the main chart (e.g., EMA, BB)
- * Set separate_scale=true for indicators like MFI (0-100) to map to price range
- */
-export function add_chart_overlay(indicator_id: string, separate_scale: boolean): void;
-
-/**
- * Add indicator to chart using chartcore's new indicator system
- *
- * # Parameters
- * - `indicator_type`: Indicator ID (e.g., "rsi", "sma", "macd")
- * - `params_json`: JSON string with indicator parameters (e.g., `{"period": 14}`)
- *
- * # Returns
- * - Indicator ID for later reference
- *
- * # Example
- * ```javascript
- * const id = await wasm.add_chartcore_indicator("rsi", '{"period": 14}');
- * ```
- */
-export function add_chartcore_indicator(indicator_type: string, params_json: string): string;
-
-/**
- * Add a dedicated indicator panel (e.g., RSI, MACD)
- * Returns panel ID as string
- */
-export function add_indicator_panel(indicator_id: string, params_json: string): string;
-
-/**
- * Check and clear last heartbeat reply from window object
- * Returns the ref ID if a heartbeat reply was received
- */
-export function check_heartbeat_reply(): string | undefined;
-
-/**
- * Collapse/minimize a panel (Task 5.3)
- */
-export function collapse_panel(panel_id: string): void;
-
-/**
- * Connect to data stream with properly wired callbacks
- */
-export function connect(source: string, symbol: string, tf: string, ws_url: string): void;
-
-/**
- * Disconnect from data stream (manual disconnect resets reconnection)
- */
-export function disconnect(): void;
-
-/**
- * Perform reconnection attempt
- */
-export function do_reconnect(): void;
-
-/**
- * Expand/restore a panel (Task 5.3)
- */
-export function expand_panel(panel_id: string): void;
-
-/**
  * Get all available indicator metadata as JSON
  */
 export function getAllIndicators(): string;
@@ -366,231 +480,54 @@ export function getAllIndicators(): string;
  */
 export function getIndicatorMetadata(id: string): any;
 
-/**
- * Get list of active indicators with their configurations
- *
- * Returns JSON array of indicator objects
- */
-export function get_active_chartcore_indicators(): string;
-
-/**
- * Get all available indicators with metadata
- * Returns JSON array of indicator metadata
- */
-export function get_all_indicators(): string;
-
-/**
- * Get list of all available indicator types
- *
- * Returns JSON array with indicator metadata (id, name, category, params)
- */
-export function get_available_indicators(): string;
-
-/**
- * Get current connection status
- */
-export function get_connection_status(): string;
-
-/**
- * Get metadata for a specific indicator by ID
- * Returns JSON object with indicator metadata, or null if not found
- */
-export function get_indicator_metadata(indicator_id: string): any;
-
-/**
- * Get last candle as JSON
- */
-export function get_last_candle(): string | undefined;
-
-/**
- * Get panel layout as JSON (for rendering)
- */
-export function get_panel_layout(): string;
-
-/**
- * Get reconnection delay (returns 0 if not in reconnecting state)
- * JS should call this, wait the returned ms, then call do_reconnect()
- */
-export function get_reconnect_delay(): number;
-
-/**
- * Initialize the WASM module with configuration
- */
-export function init(config_json: string): void;
-
-/**
- * Check if a panel is collapsed (Task 5.3)
- */
-export function is_panel_collapsed(panel_id: string): boolean;
-
-/**
- * Check if a panel is maximized (Task 5.3)
- */
-export function is_panel_maximized(panel_id: string): boolean;
-
-/**
- * Check if currently in reconnecting state
- */
-export function is_reconnecting(): boolean;
-
-/**
- * Load test data using chartcore generator
- *
- * # Parameters
- * - market_type: "crypto", "stock", "forex", "futures", "commodities"
- * - trend: "bullish_strong", "bullish_mild", "sideways", "bearish_mild", "bearish_strong"
- * - volatility: "low", "normal", "high", "extreme"
- * - count: number of candles to generate
- */
-export function load_test_data(market_type: string, trend: string, volatility: string, count: number): void;
-
-/**
- * Maximize a panel (collapse all others) (Task 5.3)
- */
-export function maximize_panel(panel_id: string): void;
-
-/**
- * Move panel to new position
- */
-export function move_panel(panel_id: string, new_index: number): void;
-
-/**
- * Remove an overlay from the main chart
- */
-export function remove_chart_overlay(indicator_id: string): void;
-
-/**
- * Remove indicator from chart
- */
-export function remove_chartcore_indicator(indicator_id: string): void;
-
-/**
- * Remove a panel by ID
- */
-export function remove_panel(panel_id: string): void;
-
-/**
- * Reorder panels by swapping two indices (Task 5.2)
- */
-export function reorder_panels(from_index: number, to_index: number): void;
-
-/**
- * Resize a panel (user dragged separator)
- */
-export function resize_panel(panel_id: string, height: number): void;
-
-/**
- * Restore all panels (expand all collapsed) (Task 5.3)
- */
-export function restore_all_panels(): void;
-
-/**
- * Restore panel layout from JSON (workspace persistence)
- */
-export function restore_panel_layout(json: string): void;
-
-/**
- * Send heartbeat - should be called periodically by JS (every 30s)
- * Returns true if heartbeat was sent, false if connection is not active
- */
-export function send_heartbeat(): boolean;
-
-/**
- * Set total container height (call from window resize)
- */
-export function set_panel_container_height(height: number): void;
-
-/**
- * Change symbol (triggers resync)
- */
-export function set_symbol(symbol: string): void;
-
-/**
- * Change timeframe (triggers resync)
- */
-export function set_timeframe(tf: string): void;
-
-/**
- * Toggle indicator on/off
- */
-export function toggle_indicator(name: string, params_json: string, enabled: boolean): void;
-
-/**
- * Update indicator parameters
- *
- * # Parameters
- * - `indicator_id`: ID returned from add_chartcore_indicator
- * - `params_json`: New parameters as JSON
- */
-export function update_chartcore_indicator_params(indicator_id: string, params_json: string): void;
-
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly add_chart_overlay: (a: number, b: number, c: number, d: number) => void;
-  readonly add_chartcore_indicator: (a: number, b: number, c: number, d: number, e: number) => void;
-  readonly add_indicator_panel: (a: number, b: number, c: number, d: number, e: number) => void;
-  readonly check_heartbeat_reply: (a: number) => void;
-  readonly collapse_panel: (a: number, b: number, c: number) => void;
-  readonly connect: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-  readonly disconnect: (a: number) => void;
-  readonly do_reconnect: (a: number) => void;
-  readonly expand_panel: (a: number, b: number, c: number) => void;
-  readonly get_active_chartcore_indicators: (a: number) => void;
-  readonly get_all_indicators: (a: number) => void;
-  readonly get_available_indicators: (a: number) => void;
-  readonly get_connection_status: (a: number) => void;
-  readonly get_indicator_metadata: (a: number, b: number) => number;
-  readonly get_last_candle: (a: number) => void;
-  readonly get_panel_layout: (a: number) => void;
-  readonly get_reconnect_delay: (a: number) => void;
-  readonly init: (a: number, b: number, c: number) => void;
-  readonly is_panel_collapsed: (a: number, b: number, c: number) => void;
-  readonly is_panel_maximized: (a: number, b: number, c: number) => void;
-  readonly is_reconnecting: (a: number) => void;
-  readonly load_test_data: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
-  readonly maximize_panel: (a: number, b: number, c: number) => void;
-  readonly move_panel: (a: number, b: number, c: number, d: number) => void;
-  readonly remove_chart_overlay: (a: number, b: number, c: number) => void;
-  readonly remove_chartcore_indicator: (a: number, b: number, c: number) => void;
-  readonly remove_panel: (a: number, b: number, c: number) => void;
-  readonly reorder_panels: (a: number, b: number, c: number) => void;
-  readonly resize_panel: (a: number, b: number, c: number, d: number) => void;
-  readonly restore_all_panels: (a: number) => void;
-  readonly restore_panel_layout: (a: number, b: number, c: number) => void;
-  readonly send_heartbeat: (a: number) => void;
-  readonly set_panel_container_height: (a: number, b: number) => void;
-  readonly set_symbol: (a: number, b: number, c: number) => void;
-  readonly set_timeframe: (a: number, b: number, c: number) => void;
-  readonly toggle_indicator: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-  readonly update_chartcore_indicator_params: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly __wbg_wasmchart_free: (a: number, b: number) => void;
   readonly __wbg_wasmlempelzivcomplexity_free: (a: number, b: number) => void;
   readonly __wbg_wasmpermutationentropy_free: (a: number, b: number) => void;
   readonly __wbg_wasmshannonentropy_free: (a: number, b: number) => void;
-  readonly getAllIndicators: (a: number) => void;
-  readonly getIndicatorMetadata: (a: number, b: number) => number;
+  readonly getAllIndicators: () => [number, number];
+  readonly getIndicatorMetadata: (a: number, b: number) => any;
   readonly wasmchart_addCandle: (a: number, b: bigint, c: number, d: number, e: number, f: number, g: number) => void;
-  readonly wasmchart_attachCanvas: (a: number, b: number, c: number) => void;
-  readonly wasmchart_clearTools: (a: number, b: number) => void;
-  readonly wasmchart_createHorizontalLine: (a: number, b: number, c: number, d: number, e: number) => void;
-  readonly wasmchart_createTrendLine: (a: number, b: number, c: number, d: number, e: bigint, f: number, g: bigint, h: number) => void;
-  readonly wasmchart_createVerticalLine: (a: number, b: number, c: number, d: number, e: bigint) => void;
-  readonly wasmchart_endPriceScale: (a: number, b: number) => void;
-  readonly wasmchart_exportState: (a: number, b: number) => void;
+  readonly wasmchart_addCompareSymbol: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+  readonly wasmchart_addFootprintCandle: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_addIndicatorPane: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+  readonly wasmchart_appendCandles: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_attachCanvas: (a: number, b: any) => [number, number];
+  readonly wasmchart_clearTools: (a: number) => [number, number];
+  readonly wasmchart_createEllipse: (a: number, b: number, c: number, d: bigint, e: number, f: bigint, g: number) => [number, number];
+  readonly wasmchart_createFibonacci: (a: number, b: number, c: number, d: bigint, e: number, f: bigint, g: number) => [number, number];
+  readonly wasmchart_createHorizontalLine: (a: number, b: number, c: number, d: number) => [number, number];
+  readonly wasmchart_createRectangle: (a: number, b: number, c: number, d: bigint, e: number, f: bigint, g: number) => [number, number];
+  readonly wasmchart_createTextLabel: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number) => [number, number];
+  readonly wasmchart_createTrendLine: (a: number, b: number, c: number, d: bigint, e: number, f: bigint, g: number) => [number, number];
+  readonly wasmchart_createVerticalLine: (a: number, b: number, c: number, d: bigint) => [number, number];
+  readonly wasmchart_deleteSelectedDrawings: (a: number) => number;
+  readonly wasmchart_dragSelectedDrawingsTo: (a: number, b: number, c: number) => void;
+  readonly wasmchart_endPriceScale: (a: number) => [number, number];
+  readonly wasmchart_endSelectedDrawingsDrag: (a: number) => void;
+  readonly wasmchart_exportState: (a: number) => [number, number, number, number];
   readonly wasmchart_fitToData: (a: number) => void;
-  readonly wasmchart_getCandleAtPosition: (a: number, b: number, c: number) => number;
-  readonly wasmchart_getCandles: (a: number, b: number) => void;
-  readonly wasmchart_getCrosshairInfo: (a: number) => number;
-  readonly wasmchart_getOHLCFormatted: (a: number) => number;
-  readonly wasmchart_getTools: (a: number, b: number) => void;
-  readonly wasmchart_getViewportInfo: (a: number) => number;
-  readonly wasmchart_importState: (a: number, b: number, c: number, d: number) => void;
+  readonly wasmchart_getBarSpacing: (a: number) => number;
+  readonly wasmchart_getCandleAtPosition: (a: number, b: number, c: number) => any;
+  readonly wasmchart_getCandles: (a: number) => [number, number];
+  readonly wasmchart_getCompareSymbols: (a: number) => [number, number];
+  readonly wasmchart_getCrosshairInfo: (a: number) => any;
+  readonly wasmchart_getMagnetMode: (a: number) => [number, number];
+  readonly wasmchart_getOHLCFormatted: (a: number) => any;
+  readonly wasmchart_getPaneLayout: (a: number) => [number, number];
+  readonly wasmchart_getScaleMode: (a: number) => [number, number];
+  readonly wasmchart_getSelectedDrawings: (a: number) => [number, number];
+  readonly wasmchart_getTimezoneOffset: (a: number) => number;
+  readonly wasmchart_getTools: (a: number) => [number, number];
+  readonly wasmchart_getViewportInfo: (a: number) => any;
+  readonly wasmchart_importState: (a: number, b: number, c: number) => [number, number];
   readonly wasmchart_isDirty: (a: number) => number;
   readonly wasmchart_isLogScale: (a: number) => number;
   readonly wasmchart_isPriceLocked: (a: number) => number;
-  readonly wasmchart_new: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly wasmchart_new: (a: number, b: number, c: number, d: number) => [number, number, number];
   readonly wasmchart_onDoubleClick: (a: number, b: number, c: number) => void;
   readonly wasmchart_onKeyDown: (a: number, b: number, c: number) => void;
   readonly wasmchart_onMouseDown: (a: number, b: number, c: number, d: number) => void;
@@ -601,44 +538,65 @@ export interface InitOutput {
   readonly wasmchart_onTouchEnd: (a: number, b: number, c: number) => void;
   readonly wasmchart_onTouchMove: (a: number, b: number, c: number) => void;
   readonly wasmchart_onTouchStart: (a: number, b: number, c: number) => void;
-  readonly wasmchart_removeTool: (a: number, b: number, c: number, d: number) => void;
-  readonly wasmchart_render: (a: number, b: number) => void;
-  readonly wasmchart_resetPriceScale: (a: number, b: number) => void;
-  readonly wasmchart_resetTimeScale: (a: number, b: number) => void;
-  readonly wasmchart_resize: (a: number, b: number, c: number, d: number) => void;
-  readonly wasmchart_scalePriceTo: (a: number, b: number, c: number) => void;
-  readonly wasmchart_scaleTimeTo: (a: number, b: number, c: number) => void;
-  readonly wasmchart_setCandleStyle: (a: number, b: number, c: number, d: number) => void;
-  readonly wasmchart_setCandles: (a: number, b: number, c: number, d: number) => void;
+  readonly wasmchart_redo: (a: number) => number;
+  readonly wasmchart_removeCompareSymbol: (a: number, b: number, c: number) => void;
+  readonly wasmchart_removePane: (a: number, b: number, c: number) => number;
+  readonly wasmchart_removeTool: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_render: (a: number) => [number, number];
+  readonly wasmchart_resetPriceScale: (a: number) => [number, number];
+  readonly wasmchart_resetTimeScale: (a: number) => [number, number];
+  readonly wasmchart_resize: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_scalePriceTo: (a: number, b: number) => [number, number];
+  readonly wasmchart_scaleTimeTo: (a: number, b: number) => [number, number];
+  readonly wasmchart_selectDrawingAt: (a: number, b: number, c: number, d: number) => number;
+  readonly wasmchart_selectDrawingsInRect: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+  readonly wasmchart_setBarSpacing: (a: number, b: number) => void;
+  readonly wasmchart_setBarWidthRatio: (a: number, b: number) => void;
+  readonly wasmchart_setCandleStyle: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setCandles: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setCandlesBatch: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setFootprintData: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setFootprintEnabled: (a: number, b: number) => void;
   readonly wasmchart_setLogScale: (a: number, b: number) => void;
+  readonly wasmchart_setMagnetMode: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setPaneHeightFraction: (a: number, b: number, c: number, d: number) => void;
   readonly wasmchart_setPriceLocked: (a: number, b: number) => void;
+  readonly wasmchart_setRenkoBrickSize: (a: number, b: number) => [number, number];
+  readonly wasmchart_setScaleMode: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setSessions: (a: number, b: number, c: number) => [number, number];
+  readonly wasmchart_setShowSessions: (a: number, b: number) => void;
   readonly wasmchart_setTheme: (a: number, b: number) => void;
-  readonly wasmchart_startPriceScale: (a: number, b: number, c: number) => void;
-  readonly wasmchart_startTimeScale: (a: number, b: number, c: number) => void;
-  readonly wasmlempelzivcomplexity_calculate: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly wasmchart_setTimezone: (a: number, b: number) => void;
+  readonly wasmchart_snapToCandle: (a: number, b: bigint, c: number) => any;
+  readonly wasmchart_startPriceScale: (a: number, b: number) => [number, number];
+  readonly wasmchart_startSelectedDrawingsDrag: (a: number, b: number, c: number) => number;
+  readonly wasmchart_startTimeScale: (a: number, b: number) => [number, number];
+  readonly wasmchart_undo: (a: number) => number;
+  readonly wasmchart_updateRunningCandle: (a: number, b: number, c: number) => [number, number];
+  readonly wasmlempelzivcomplexity_calculate: (a: number, b: number, c: number, d: number) => [number, number];
   readonly wasmlempelzivcomplexity_len: (a: number) => number;
   readonly wasmlempelzivcomplexity_new: (a: number, b: number) => number;
-  readonly wasmlempelzivcomplexity_next: (a: number, b: number) => number;
+  readonly wasmlempelzivcomplexity_next: (a: number, b: number) => any;
   readonly wasmlempelzivcomplexity_reset: (a: number) => void;
-  readonly wasmpermutationentropy_calculate: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly wasmpermutationentropy_calculate: (a: number, b: number, c: number, d: number, e: number) => [number, number];
   readonly wasmpermutationentropy_len: (a: number) => number;
   readonly wasmpermutationentropy_new: (a: number, b: number, c: number) => number;
-  readonly wasmpermutationentropy_next: (a: number, b: number) => number;
+  readonly wasmpermutationentropy_next: (a: number, b: number) => any;
   readonly wasmpermutationentropy_reset: (a: number) => void;
-  readonly wasmshannonentropy_calculate: (a: number, b: number, c: number, d: number, e: number) => void;
-  readonly wasmshannonentropy_len: (a: number) => number;
+  readonly wasmshannonentropy_calculate: (a: number, b: number, c: number, d: number) => [number, number];
   readonly wasmshannonentropy_new: (a: number, b: number) => number;
-  readonly wasmshannonentropy_next: (a: number, b: number) => number;
+  readonly wasmshannonentropy_next: (a: number, b: number) => any;
   readonly wasmshannonentropy_reset: (a: number) => void;
-  readonly wasmchart_endTimeScale: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_368: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_111: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_367: (a: number, b: number) => void;
-  readonly __wbindgen_export: (a: number, b: number) => number;
-  readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
-  readonly __wbindgen_export3: (a: number) => void;
-  readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
-  readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+  readonly wasmchart_endTimeScale: (a: number) => [number, number];
+  readonly wasmshannonentropy_len: (a: number) => number;
+  readonly __wbindgen_exn_store: (a: number) => void;
+  readonly __externref_table_alloc: () => number;
+  readonly __wbindgen_externrefs: WebAssembly.Table;
+  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+  readonly __wbindgen_malloc: (a: number, b: number) => number;
+  readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+  readonly __externref_table_dealloc: (a: number) => void;
+  readonly __wbindgen_start: () => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

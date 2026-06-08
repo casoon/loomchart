@@ -4,12 +4,20 @@ use crate::rendering::Canvas2DRenderer;
 use crate::Color;
 use serde::{Deserialize, Serialize};
 
+pub mod ellipse;
+pub mod fibonacci_retracement;
 pub mod horizontal_line;
+pub mod rectangle;
+pub mod text_label;
 pub mod trendline;
 pub mod vertical_line;
 
 // Re-export tool types for convenience
+pub use ellipse::Ellipse;
+pub use fibonacci_retracement::FibonacciRetracement;
 pub use horizontal_line::HorizontalLine;
+pub use rectangle::Rectangle;
+pub use text_label::TextLabel;
 pub use trendline::TrendLine;
 pub use vertical_line::VerticalLine;
 
@@ -32,6 +40,10 @@ pub enum ToolType {
     TrendLine,
     HorizontalLine,
     VerticalLine,
+    Rectangle,
+    FibonacciRetracement,
+    TextLabel,
+    Ellipse,
 }
 
 /// Base trait for all drawing tools
@@ -220,6 +232,26 @@ impl ToolManager {
         }
     }
 
+    /// Shift every node of all selected tools by (dt, dp).
+    pub fn move_many(&mut self, ids: &[String], dt: i64, dp: f64) {
+        for tool in self.tools.iter_mut() {
+            if ids.iter().any(|id| id == tool.id()) {
+                for node in tool.nodes_mut().iter_mut() {
+                    node.time += dt;
+                    node.price += dp;
+                }
+            }
+        }
+    }
+
+    /// Remove all tools with matching IDs.
+    pub fn remove_many(&mut self, ids: &[String]) -> usize {
+        let before = self.tools.len();
+        self.tools
+            .retain(|tool| !ids.iter().any(|id| id == tool.id()));
+        before - self.tools.len()
+    }
+
     /// Remove and return the selected tool, clearing selection.
     pub fn delete_selected(&mut self) -> Option<Box<dyn ChartTool>> {
         let id = self.selected_id.take()?;
@@ -300,6 +332,26 @@ impl ToolManager {
                 ToolType::VerticalLine => {
                     let t: VerticalLine = serde_json::from_value(env.data)
                         .map_err(|e| format!("VerticalLine deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::Rectangle => {
+                    let t: Rectangle = serde_json::from_value(env.data)
+                        .map_err(|e| format!("Rectangle deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::FibonacciRetracement => {
+                    let t: FibonacciRetracement = serde_json::from_value(env.data)
+                        .map_err(|e| format!("FibonacciRetracement deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::TextLabel => {
+                    let t: TextLabel = serde_json::from_value(env.data)
+                        .map_err(|e| format!("TextLabel deserialization error: {}", e))?;
+                    Box::new(t)
+                }
+                ToolType::Ellipse => {
+                    let t: Ellipse = serde_json::from_value(env.data)
+                        .map_err(|e| format!("Ellipse deserialization error: {}", e))?;
                     Box::new(t)
                 }
             };

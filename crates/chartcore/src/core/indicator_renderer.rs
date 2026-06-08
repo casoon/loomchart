@@ -6,7 +6,9 @@
 use crate::core::viewport::Viewport;
 use crate::indicators::output::{IndicatorOutput, LineStyle, MarkerShape, ScatterPoint};
 use crate::primitives::Color;
-use crate::renderers::commands::{RenderCommand, RenderCommandBuffer};
+use crate::renderers::commands::{
+    LineStyle as CmdLineStyle, RenderCommand, RenderCommandBuffer,
+};
 
 /// Indicator renderer - converts indicator output to render commands
 pub struct IndicatorRenderer<'a> {
@@ -123,31 +125,26 @@ impl<'a> IndicatorRenderer<'a> {
         points: &[(f64, f64)],
         color: &Color,
         width: f64,
-        _style: &LineStyle,
+        style: &LineStyle,
         buffer: &mut RenderCommandBuffer,
     ) {
         if points.len() < 2 {
             return;
         }
-
-        // For now, draw as individual line segments
-        // TODO: Optimize with a single DrawPolyline command
-        for i in 0..points.len() - 1 {
-            let (x1, y1) = points[i];
-            let (x2, y2) = points[i + 1];
-
-            buffer.push(RenderCommand::DrawLine {
-                x1,
-                y1,
-                x2,
-                y2,
-                color: color.clone(),
-                width,
-            });
-
-            // Apply line style (dashed/dotted) via dash pattern
-            // TODO: Add dash pattern support to RenderCommand
-        }
+        let cmd_style = match style {
+            LineStyle::Solid => CmdLineStyle::Solid,
+            LineStyle::Dashed => CmdLineStyle::Dashed {
+                dash_length: 5,
+                gap_length: 5,
+            },
+            LineStyle::Dotted => CmdLineStyle::Dotted,
+        };
+        buffer.push(RenderCommand::DrawIndicatorLine {
+            points: points.to_vec(),
+            color: color.clone(),
+            width,
+            style: cmd_style,
+        });
     }
 
     /// Render histogram bars
@@ -379,14 +376,10 @@ impl<'a> IndicatorRenderer<'a> {
         color: &Color,
         buffer: &mut RenderCommandBuffer,
     ) {
-        // Approximate circle with small rectangle for now
-        // TODO: Add DrawCircle command to RenderCommand
-        let radius = size / 2.0;
-        buffer.push(RenderCommand::DrawRect {
-            x: x - radius,
-            y: y - radius,
-            width: size,
-            height: size,
+        buffer.push(RenderCommand::DrawCircle {
+            x,
+            y,
+            radius: size / 2.0,
             fill: Some(color.clone()),
             stroke: None,
             stroke_width: 0.0,
