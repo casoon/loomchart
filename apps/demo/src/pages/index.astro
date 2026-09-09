@@ -1,7 +1,9 @@
 ---
 import { CANDLE_DATA } from "../lib/candles";
 import "../styles/global.css";
+import { createTranslator } from "../i18n";
 
+const t = createTranslator("en");
 const timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"];
 const defaultTf = "1h";
 
@@ -106,6 +108,164 @@ const lastCandleJson = JSON.stringify(lastCandle);
       }
       .compare-chip button { border:none; background:transparent; color:var(--muted); cursor:pointer; line-height:1; }
       .compare-chip button:hover { color:var(--dn); }
+      /* Studies panel */
+      .studies-panel {
+        position:absolute; top:calc(100% + 4px); left:0; z-index:50; min-width:280px;
+        background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+        padding:10px; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+      }
+      .sp-section { font-size:10px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:var(--muted); padding:6px 0 4px; }
+      .sp-section:first-child { padding-top:0; }
+      .sp-section + * { margin-top:0; }
+      .sp-row { display:flex; align-items:center; gap:8px; padding:3px 0; }
+      .sp-toggle {
+        width:28px; height:16px; border-radius:8px; border:none; cursor:pointer; flex-shrink:0;
+        background:var(--bg3); transition:background 0.15s; position:relative;
+      }
+      .sp-toggle::after {
+        content:''; position:absolute; left:2px; top:2px; width:12px; height:12px;
+        border-radius:50%; background:var(--muted); transition:left 0.15s, background 0.15s;
+      }
+      .sp-toggle.on { background:var(--accent); }
+      .sp-toggle.on::after { left:14px; background:#fff; }
+      .sp-name { flex:1; font-size:12px; color:var(--fg); line-height:1.2; }
+      .sp-sub { display:block; font-size:10px; color:var(--dim); }
+      .sp-gear { width:22px; height:22px; border:none; background:transparent; color:var(--muted); cursor:pointer; border-radius:3px; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.1s, color 0.1s; }
+      .sp-gear:hover { background:var(--border); color:var(--fg); }
+      .sp-divider { border:none; border-top:1px solid var(--border); margin:6px 0; }
+      .sp-subsection { font-size:10px; color:var(--dim); padding:2px 0 4px; font-style:italic; }
+      /* Active indicator list */
+      .ind-active-list { display:flex; flex-direction:column; gap:2px; margin-bottom:2px; }
+      .ind-active-row { display:flex; align-items:center; gap:7px; padding:3px 4px; border-radius:4px; background:var(--bg3); }
+      .ind-active-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+      .ind-active-name { flex:1; font-size:12px; color:var(--fg); font-weight:500; }
+      .ind-remove { width:18px; height:18px; border:none; background:transparent; color:var(--muted); cursor:pointer; border-radius:3px; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+      .ind-remove:hover { background:rgba(248,81,73,0.15); color:var(--dn); }
+      /* Catalog panel — search header + scrollable list */
+      .ind-catalog-header { display:flex; gap:6px; margin-bottom:8px; }
+      .ind-cat-label { font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); padding:8px 0 3px; }
+      .ind-cat-label:first-child { padding-top:0; }
+      .ind-cat-row {
+        display:flex; align-items:flex-start; gap:8px; padding:5px 6px; border-radius:4px;
+        cursor:pointer; transition:background 0.1s;
+      }
+      .ind-cat-row:hover { background:var(--bg3); }
+      .ind-cat-row--active { background:color-mix(in srgb, var(--accent) 10%, transparent); }
+      .ind-cat-row--active:hover { background:color-mix(in srgb, var(--accent) 16%, transparent); }
+      .ind-cat-info { flex:1; min-width:0; }
+      .ind-cat-name { display:block; font-size:12px; font-weight:500; color:var(--fg); }
+      .ind-cat-desc { display:block; font-size:10px; color:var(--dim); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .ind-cat-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; padding-top:2px; }
+      .ind-cat-check { font-size:11px; color:var(--accent); font-weight:700; width:16px; text-align:center; }
+      .ind-cat-add { font-size:14px; color:var(--muted); width:16px; text-align:center; line-height:1; }
+      .ind-cat-row:hover .ind-cat-add { color:var(--fg); }
+      /* Scrollable catalog list — critical at 100+ indicators */
+      .ind-catalog-list { max-height:240px; overflow-y:auto; overflow-x:hidden; margin:0 -4px; padding:0 4px; }
+      .ind-catalog-list::-webkit-scrollbar { width:4px; }
+      .ind-catalog-list::-webkit-scrollbar-track { background:transparent; }
+      .ind-catalog-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+      /* Active tag button in toolbar */
+      .ind-active-tag { gap:5px; }
+      .ind-active-tag-dot { width:6px; height:6px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+      /* Active panel dropdown */
+      .ind-active-panel {
+        position:absolute; top:calc(100% + 4px); left:0; z-index:50; min-width:280px;
+        background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+        padding:10px; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+      }
+      /* Draggable oscillator pane rows */
+      .ind-pane-row {
+        display:flex; align-items:center; gap:6px; padding:4px 4px;
+        border-radius:4px; cursor:default; transition:background 0.1s;
+        border:1px solid transparent;
+      }
+      .ind-pane-row:hover { background:var(--bg3); }
+      .ind-pane-row--over { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--bg3)); }
+      .ind-pane-row[draggable] { cursor:grab; }
+      .ind-pane-row[draggable]:active { cursor:grabbing; }
+      .ind-pane-handle { font-size:13px; color:var(--muted); cursor:grab; flex-shrink:0; line-height:1; user-select:none; }
+      .ind-pane-name { font-size:12px; font-weight:600; color:var(--fg); min-width:36px; flex-shrink:0; }
+      .ind-pane-pct { font-size:10px; color:var(--muted); min-width:28px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
+      .ind-pane-slider { flex:1; min-width:60px; accent-color:var(--accent); cursor:pointer; }
+      .ind-pane-slider-row { display:flex; align-items:center; gap:6px; padding:2px 4px 5px 22px; }
+      /* Oscillator pane header overlay — positioned over the WASM canvas */
+      .osc-pane-header {
+        position:absolute; left:0; right:0; z-index:4;
+        display:flex; align-items:center; justify-content:space-between;
+        padding:2px 68px 2px 8px;   /* right padding avoids price axis */
+        pointer-events:none;
+      }
+      .osc-pane-name {
+        font-size:10px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
+        color:var(--muted); background:var(--bg2); padding:1px 5px; border-radius:3px;
+        border:1px solid var(--border); opacity:0.85;
+      }
+      .osc-pane-btn {
+        pointer-events:all; width:20px; height:20px; border-radius:3px;
+        border:none; background:var(--bg2); color:var(--muted); cursor:pointer;
+        display:flex; align-items:center; justify-content:center;
+        border:1px solid var(--border); opacity:0.85; transition:opacity 0.1s;
+      }
+      .osc-pane-btn:hover { opacity:1; color:var(--fg); }
+      /* Collapsed pane strip at bottom of chart */
+      .osc-collapsed-strip {
+        position:absolute; bottom:22px; left:0; right:0; z-index:4;
+        display:flex; align-items:center; gap:4px; padding:3px 8px;
+        border-top:1px solid var(--border);
+        background:color-mix(in srgb, var(--bg2) 80%, transparent);
+        pointer-events:none;
+      }
+      .osc-collapsed-pill {
+        pointer-events:all;
+        display:inline-flex; align-items:center; gap:4px;
+        height:18px; padding:0 7px;
+        font-size:10px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
+        border-radius:3px; border:1px solid var(--border);
+        background:var(--bg3); color:var(--muted); cursor:pointer;
+        transition:background 0.1s, color 0.1s;
+      }
+      .osc-collapsed-pill:hover { background:var(--border); color:var(--fg); }
+      .studies-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--accent); color:#fff; font-size:10px; font-weight:700; margin-left:2px; }
+
+      /* ── Tooltips ────────────────────────────────────────────── */
+      [data-tip] { position:relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        top: calc(100% + 7px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--fg);
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.4;
+        padding: 5px 9px;
+        border-radius: 5px;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 200;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        transition: opacity 0.12s;
+        /* delay so quick mouse-overs don't flash the tooltip */
+        transition-delay: 0.45s;
+      }
+      [data-tip]:hover::after { opacity: 1; transition-delay: 0.45s; }
+      /* Tooltip pointing upward for elements near the bottom of the screen */
+      [data-tip-dir=up]::after {
+        top: auto;
+        bottom: calc(100% + 7px);
+      }
+      /* Tooltip to the right (left sidebar tools) */
+      [data-tip-dir=right]::after {
+        top: 50%;
+        left: calc(100% + 7px);
+        bottom: auto;
+        transform: translateY(-50%);
+      }
+
       .indicator-chip {
         display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 6px;
         border-radius:4px; background:var(--bg3); color:var(--fg); font-size:11px;
@@ -311,46 +471,6 @@ const lastCandleJson = JSON.stringify(lastCandle);
       </template>
     </div>
 
-    <!-- Compare symbol popover -->
-    <div class="popover" x-show="compareOpen" x-cloak x-on:click.outside="compareOpen = false"
-         style="top:76px;right:110px;min-width:300px">
-      <h4>Add comparison</h4>
-      <div class="popover-row" style="border:none">
-        <input class="popover-input" type="text" placeholder="Search symbol"
-               x-model="compareQuery"
-               x-on:keydown.enter="addCompareFromInput()">
-        <button class="btn btn-ghost scale-btn"
-                x-on:click="addCompareFromInput()"
-                x-bind:disabled="compareSymbols.length >= 3">Add</button>
-      </div>
-      <template x-if="compareSymbols.length >= 3">
-        <div style="font-size:11px;color:var(--dim);padding:4px 0">Maximum 3 comparison symbols.</div>
-      </template>
-      <h4 style="margin-top:8px">Symbols</h4>
-      <template x-for="s in filteredCompareSymbols()" x-bind:key="s.sym">
-        <div class="popover-row" x-on:click="addCompareSymbol(s.sym)" style="cursor:pointer">
-          <span class="layout-item">
-            <span x-text="s.sym" style="font-weight:600"></span>
-            <small x-text="s.name"></small>
-          </span>
-          <span class="tabular-nums" style="font-size:10px;min-width:42px;text-align:right"
-                x-bind:class="s.ch >= 0 ? 'ohlcv-up' : 'ohlcv-down'"
-                x-text="(s.ch >= 0 ? '+' : '') + s.ch.toFixed(2) + '%'"></span>
-        </div>
-      </template>
-      <template x-if="compareSymbols.length > 0">
-        <div style="padding-top:6px;border-top:1px solid var(--border);margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
-          <template x-for="entry in compareSymbols" x-bind:key="entry.symbol">
-            <span class="compare-chip">
-              <span class="compare-swatch" x-bind:style="'background:' + entry.color"></span>
-              <span x-text="entry.symbol"></span>
-              <button type="button" x-on:click="removeCompareSymbol(entry.symbol)" title="Remove compare">×</button>
-            </span>
-          </template>
-        </div>
-      </template>
-    </div>
-
     <!-- ── Row 2: Toolbar (chart controls / OHLCV) ───────────── -->
     <div class="flex items-center gap-1 px-2 shrink-0 border-b select-none"
          style="height:34px;border-color:var(--border);background:var(--bg2)">
@@ -380,124 +500,204 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <!-- Fit to data -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="fitToData()"
-              title="Fit all data to view (F)">
+              data-tip={t('scale.fit.tip')}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8"/>
         </svg>
-        Fit
+        {t('scale.fit')}
       </button>
 
-      <!-- Log scale toggle — very visible when active -->
+      <!-- Log scale toggle -->
       <button class="btn btn-ghost scale-btn"
               x-on:click="toggleLogScale()"
               x-bind:class="logScale ? 'active' : ''"
-              title="Toggle logarithmic price scale (L)">
+              data-tip={t('scale.log.tip')}>
         <span x-text="logScale ? 'LOG ✓' : 'LOG'"></span>
       </button>
 
-      <!-- Axis lock toggle — prevents fit/zoom from changing price range -->
+      <!-- Axis lock toggle -->
       <button class="btn btn-ghost scale-btn flex items-center gap-1"
               x-on:click="toggleAxisLock()"
               x-bind:class="axisLocked ? 'active' : ''"
-              title="Lock price axis (A) — prevents auto-fit from changing price range">
+              data-tip={t('scale.lock.tip')}>
         <span x-text="axisLocked ? '🔒' : '🔓'"></span>
-        <span>Axis</span>
+        <span>{t('scale.lock')}</span>
       </button>
 
       <!-- Volume profile mode selector: off / VPVR / VPSV -->
-      <div class="seg-group" title="Volume Profile (V) — VPVR: visible range · VPSV: session (last 24h)">
+      <div class="seg-group">
         <button class="seg-btn" x-on:click="setVPMode('off')"
-                x-bind:class="vpMode === 'off' ? 'active' : ''">VP off</button>
+                x-bind:class="vpMode === 'off' ? 'active' : ''"
+                data-tip={t('vp.off.tip')}>{t('vp.off')}</button>
         <button class="seg-btn" x-on:click="setVPMode('vpvr')"
-                x-bind:class="vpMode === 'vpvr' ? 'active' : ''">VPVR</button>
+                x-bind:class="vpMode === 'vpvr' ? 'active' : ''"
+                data-tip={t('vp.vpvr.tip')}>{t('vp.vpvr')}</button>
         <button class="seg-btn" x-on:click="setVPMode('vpsv')"
-                x-bind:class="vpMode === 'vpsv' ? 'active' : ''">VPSV</button>
+                x-bind:class="vpMode === 'vpsv' ? 'active' : ''"
+                data-tip={t('vp.vpsv.tip')}>{t('vp.vpsv')}</button>
       </div>
 
-      <!-- Strategy overlay (SMA crossover entries/exits) -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="toggleStrategy()"
-              x-on:dblclick.prevent="openIndicatorSettings('strategy')"
-              x-bind:class="showStrategy ? 'active' : ''"
-              title="Strategy overlay (S) — double-click for settings">
-        <span>▲▼</span>
-        <span>Strategy</span>
-      </button>
+      <!-- ── "Add indicator" catalog button + dropdown ────────── -->
+      <div style="position:relative" x-on:click.outside="studiesOpen = false">
+        <button class="btn btn-ghost scale-btn flex items-center gap-1"
+                x-on:click="studiesOpen = !studiesOpen"
+                x-bind:class="studiesOpen ? 'active' : ''"
+                data-tip={t('indicators.tip')}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0">
+            <line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/>
+          </svg>
+          <span>{t('indicators')}</span>
+        </button>
 
-      <!-- Divergence detection -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="toggleDivergence()"
-              x-on:dblclick.prevent="openIndicatorSettings('divergence')"
-              x-bind:class="showDivergence ? 'active' : ''"
-              title="Divergence detection (D) — double-click for settings">
-        <span>↗↘</span>
-        <span>Div</span>
-      </button>
+        <!-- Catalog panel — ONLY for adding/browsing, no active list here -->
+        <div class="studies-panel" x-show="studiesOpen" x-cloak>
+          <div class="ind-catalog-header">
+            <input class="popover-input" type="text"
+                   placeholder="Search indicators…"
+                   x-model="indicatorQuery"
+                   x-ref="indSearch"
+                   style="flex:1"
+                   x-on:keydown.escape="studiesOpen = false">
+          </div>
 
-      <!-- Patterns -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="togglePatterns()"
-              x-on:dblclick.prevent="openIndicatorSettings('patterns')"
-              x-bind:class="showPatterns ? 'active' : ''"
-              title="Chart patterns (P) — double-click for settings">
-        <span>⋂⋃</span>
-        <span>Patterns</span>
-      </button>
+          <div class="ind-catalog-list">
+            <template x-for="cat in catalogCategories()" x-bind:key="cat">
+              <div>
+                <div class="ind-cat-label" x-text="cat"></div>
+                <template x-for="ind in catalogIndicators().filter(i => i.category === cat)" x-bind:key="ind.id">
+                  <div class="ind-cat-row"
+                       x-bind:class="isIndicatorActive(ind.id) ? 'ind-cat-row--active' : ''"
+                       x-on:click="toggleIndicatorById(ind.id)">
+                    <div class="ind-cat-info">
+                      <span class="ind-cat-name" x-text="ind.name"></span>
+                      <span class="ind-cat-desc" x-text="ind.desc"></span>
+                    </div>
+                    <div class="ind-cat-actions">
+                      <button class="sp-gear" x-show="ind.hasSettings && isIndicatorActive(ind.id)"
+                              x-on:click.stop="openIndicatorSettings(ind.id); studiesOpen = false"
+                              title="Settings">⚙</button>
+                      <span class="ind-cat-check" x-show="isIndicatorActive(ind.id)">✓</span>
+                      <span class="ind-cat-add" x-show="!isIndicatorActive(ind.id)">+</span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <template x-if="catalogIndicators().length === 0">
+              <div style="font-size:11px;color:var(--dim);padding:10px 0;text-align:center">
+                No results for "<span x-text="indicatorQuery"></span>"
+              </div>
+            </template>
+          </div>
 
-      <!-- MTF indicator -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="toggleMTF()"
-              x-on:dblclick.prevent="openIndicatorSettings('mtf')"
-              x-bind:class="showMTF ? 'active' : ''"
-              title="Multi-timeframe SMA (M) — double-click for settings">
-        <span>MTF</span>
-      </button>
-
-      <div class="seg-group" title="Oscillator panes">
-        <button class="seg-btn" x-on:click="toggleOscillatorPane('rsi')" x-bind:class="hasOscillatorPane('rsi') ? 'active' : ''">RSI</button>
-        <button class="seg-btn" x-on:click="toggleOscillatorPane('macd')" x-bind:class="hasOscillatorPane('macd') ? 'active' : ''">MACD</button>
-        <button class="seg-btn" x-on:click="toggleOscillatorPane('stochastic')" x-bind:class="hasOscillatorPane('stochastic') ? 'active' : ''">Stoch</button>
-        <button class="seg-btn" x-on:click="toggleOscillatorPane('cci')" x-bind:class="hasOscillatorPane('cci') ? 'active' : ''">CCI</button>
-        <button class="seg-btn" x-on:click="toggleOscillatorPane('williams_r')" x-bind:class="hasOscillatorPane('williams_r') ? 'active' : ''">W%R</button>
-      </div>
-
-      <template x-if="oscillatorPanes.length > 0">
-        <div class="pane-control">
-          <span x-text="paneSummary()"></span>
-          <input type="range" min="14" max="50" step="1"
-                 x-model.number="indicatorPanePercent"
-                 x-on:input="setIndicatorPanePercent(indicatorPanePercent)">
+          <!-- Compare lives in the catalog too — it's about adding things -->
+          <div class="ind-cat-label" style="margin-top:4px">{t('indicators.catalog.compare')}</div>
+          <div style="display:flex;gap:6px">
+            <input class="popover-input" type="text" placeholder="Symbol…"
+                   x-model="compareQuery"
+                   x-on:keydown.enter="addCompareFromInput()">
+            <button class="btn btn-ghost scale-btn"
+                    x-on:click="addCompareFromInput()"
+                    x-bind:disabled="compareSymbols.length >= 3">Add</button>
+          </div>
+          <div style="max-height:100px;overflow-y:auto;margin-top:4px">
+            <template x-for="s in filteredCompareSymbols()" x-bind:key="s.sym">
+              <div class="popover-row" x-on:click="addCompareSymbol(s.sym)" style="cursor:pointer;padding:3px 0">
+                <span class="layout-item">
+                  <span x-text="s.sym" style="font-weight:600"></span>
+                  <small x-text="s.name"></small>
+                </span>
+                <span class="tabular-nums" style="font-size:10px;min-width:42px;text-align:right"
+                      x-bind:class="s.ch >= 0 ? 'ohlcv-up' : 'ohlcv-down'"
+                      x-text="(s.ch >= 0 ? '+' : '') + s.ch.toFixed(2) + '%'"></span>
+              </div>
+            </template>
+          </div>
         </div>
-      </template>
+      </div>
 
-      <!-- News overlay -->
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="toggleNews()"
-              x-bind:class="showNews ? 'active' : ''"
-              title="News overlay (N) — macro events on chart">
-        <span>📰</span>
-        <span>News</span>
-      </button>
+      <!-- ── Active indicators tag — dropdown with all active items ─ -->
+      <div style="position:relative" x-show="studiesCount() > 0" x-on:click.outside="activeOpen = false">
+        <button class="btn btn-ghost scale-btn ind-active-tag"
+                x-on:click="activeOpen = !activeOpen"
+                x-bind:class="activeOpen ? 'active' : ''">
+          <span class="ind-active-tag-dot"></span>
+          <span>Active</span>
+          <span class="studies-badge" x-text="studiesCount()"></span>
+        </button>
 
-      <button class="btn btn-ghost scale-btn flex items-center gap-1"
-              x-on:click="compareOpen = !compareOpen"
-              x-bind:class="compareOpen ? 'active' : ''"
-              title="Add comparison symbol">
-        <span>＋</span>
-        <span>Compare</span>
-      </button>
+        <div class="ind-active-panel" x-show="activeOpen" x-cloak>
 
-      <template x-for="entry in compareSymbols" x-bind:key="entry.symbol">
-        <span class="compare-chip">
-          <span class="compare-swatch" x-bind:style="'background:' + entry.color"></span>
-          <span x-text="entry.symbol"></span>
-          <button type="button" x-on:click="removeCompareSymbol(entry.symbol)" title="Remove compare">×</button>
-        </span>
-      </template>
+          <!-- Overlays (no drag, no height) -->
+          <template x-if="activeIndicatorList().filter(i => i.category === 'Overlays').length > 0">
+            <div>
+              <div class="ind-cat-label" style="padding-top:0">Overlays</div>
+              <template x-for="ind in activeIndicatorList().filter(i => i.category === 'Overlays')" x-bind:key="ind.id">
+                <div class="ind-active-row">
+                  <span class="ind-active-dot"></span>
+                  <span class="ind-active-name" x-text="ind.name"></span>
+                  <button class="sp-gear" x-show="ind.hasSettings"
+                          x-on:click="openIndicatorSettings(ind.id); activeOpen = false"
+                          title="Settings">⚙</button>
+                  <button class="ind-remove" x-on:click="toggleIndicatorById(ind.id)" title="Remove">×</button>
+                </div>
+              </template>
+            </div>
+          </template>
 
-      <div class="sep"></div>
+          <!-- Oscillator sub-charts: draggable + per-pane height -->
+          <template x-if="oscillatorPanes.length > 0">
+            <div>
+              <div class="ind-cat-label" style="display:flex;align-items:center;justify-content:space-between">
+                <span>Sub-charts</span>
+                <span style="font-size:10px;color:var(--dim)" x-text="paneSummary()"></span>
+              </div>
+              <div x-on:dragover.prevent x-on:drop.prevent>
+                <template x-for="(pane, idx) in oscillatorPanes" x-bind:key="pane.id">
+                  <!-- Single root required by x-for; display:contents keeps layout flat -->
+                  <div style="display:contents"
+                       x-on:dragover.prevent="_dragPaneIdx !== null && (_dragOverIdx = idx)"
+                       x-on:drop.stop="reorderPanes(_dragPaneIdx, idx); _dragPaneIdx = null; _dragOverIdx = null">
+                    <div class="ind-pane-row"
+                         x-bind:class="_dragOverIdx === idx ? 'ind-pane-row--over' : ''">
+                      <span class="ind-pane-handle" title="Drag to reorder"
+                            draggable="true"
+                            x-on:dragstart="$event.dataTransfer.effectAllowed='move'; _dragPaneIdx = idx"
+                            x-on:dragend="_dragPaneIdx = null; _dragOverIdx = null">⠿</span>
+                      <span class="ind-pane-name" x-text="pane.id.toUpperCase()"></span>
+                      <button class="ind-remove" x-on:click="toggleOscillatorPane(pane.id)" title="Remove">×</button>
+                    </div>
+                    <!-- Slider row — NOT inside draggable, so range input works -->
+                    <div class="ind-pane-slider-row">
+                      <span class="ind-pane-pct" x-text="(pane.heightPercent ?? indicatorPanePercent) + '%'"></span>
+                      <input class="ind-pane-slider" type="range" min="10" max="50" step="1"
+                             x-bind:value="pane.heightPercent ?? indicatorPanePercent"
+                             x-on:input="setPaneHeight(pane.paneId, $event.target.value)">
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
 
-      <!-- OHLCV crosshair info -->
+          <!-- Compare symbols -->
+          <template x-if="compareSymbols.length > 0">
+            <div>
+              <div class="ind-cat-label">Compare</div>
+              <template x-for="entry in compareSymbols" x-bind:key="entry.symbol">
+                <div class="ind-active-row">
+                  <span class="ind-active-dot" x-bind:style="'background:' + entry.color"></span>
+                  <span class="ind-active-name" x-text="entry.symbol"></span>
+                  <button class="ind-remove" x-on:click="removeCompareSymbol(entry.symbol)" title="Remove">×</button>
+                </div>
+              </template>
+            </div>
+          </template>
+
+        </div>
+      </div>
+
+      <!-- OHLCV crosshair info (shown while hovering over chart) -->
       <div class="flex items-center gap-2 text-[11px] tabular-nums" x-show="ohlcv.open !== null" style="color:var(--muted)">
         <span>O <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.open)"></span></span>
         <span>H <span x-bind:class="ohlcv.dir" x-text="fmt(ohlcv.high)"></span></span>
@@ -506,16 +706,6 @@ const lastCandleJson = JSON.stringify(lastCandle);
         <span>V <span x-text="fmtVol(ohlcv.volume)"></span></span>
       </div>
 
-      <div class="flex-1"></div>
-
-      <!-- Keyboard hint -->
-      <span class="text-[10px]" style="color:var(--dim)">
-        <kbd class="px-1 rounded" style="background:var(--bg3)">F</kbd> fit &nbsp;
-        <kbd class="px-1 rounded" style="background:var(--bg3)">L</kbd> log &nbsp;
-        <kbd class="px-1 rounded" style="background:var(--bg3)">A</kbd> lock &nbsp;
-        <kbd class="px-1 rounded" style="background:var(--bg3)">V</kbd> vp &nbsp;
-        <kbd class="px-1 rounded" style="background:var(--bg3)">Esc</kbd> cancel
-      </span>
     </div>
 
     <!-- ── Chart area + left drawing toolbar ─────────────────── -->
@@ -525,7 +715,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
       <div class="flex flex-col items-center gap-1 py-2 shrink-0 border-r"
            style="width:40px;background:var(--bg2);border-color:var(--border)">
 
-        <button class="tool-btn" title="Pointer — select &amp; pan (Esc)"
+        <button class="tool-btn" data-tip={t('tool.pointer.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('pointer')"
                 x-bind:class="drawTool === 'pointer' ? 'active' : ''">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1l10 6-5 1-2 5z"/></svg>
@@ -533,7 +723,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         <div class="tool-sep"></div>
 
-        <button class="tool-btn" title="Horizontal line — click to place"
+        <button class="tool-btn" data-tip={t('tool.hline.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('hline')"
                 x-bind:class="drawTool === 'hline' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -542,7 +732,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           </svg>
         </button>
 
-        <button class="tool-btn" title="Vertical line — click to place"
+        <button class="tool-btn" data-tip={t('tool.vline.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('vline')"
                 x-bind:class="drawTool === 'vline' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -551,7 +741,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           </svg>
         </button>
 
-        <button class="tool-btn" title="Trend line — click start, then end"
+        <button class="tool-btn" data-tip={t('tool.trend.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('trendline')"
                 x-bind:class="drawTool === 'trendline' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -561,7 +751,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           </svg>
         </button>
 
-        <button class="tool-btn" title="Rectangle — click two corners"
+        <button class="tool-btn" data-tip={t('tool.rect.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('rectangle')"
                 x-bind:class="drawTool === 'rectangle' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -569,7 +759,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           </svg>
         </button>
 
-        <button class="tool-btn" title="Fibonacci Retracement — click high, then low"
+        <button class="tool-btn" data-tip={t('tool.fib.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('fibonacci')"
                 x-bind:class="drawTool === 'fibonacci' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
@@ -581,7 +771,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           </svg>
         </button>
 
-        <button class="tool-btn" title="Text Label — click to place"
+        <button class="tool-btn" data-tip={t('tool.text.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('textlabel')"
                 x-bind:class="drawTool === 'textlabel' ? 'active' : ''">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -591,7 +781,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         <div class="tool-sep"></div>
 
-        <button class="tool-btn" title="Price alert — click chart at desired level"
+        <button class="tool-btn" data-tip={t('tool.alert.tip')} data-tip-dir="right"
                 x-on:click="setDrawTool('alert')"
                 x-bind:class="drawTool === 'alert' ? 'active' : ''">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -602,7 +792,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         <div class="tool-sep"></div>
 
-        <button class="tool-btn warn" title="Clear all drawings"
+        <button class="tool-btn warn" data-tip={t('tool.clear.tip')} data-tip-dir="right"
                 x-on:click="clearTools()">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
             <line x1="1.5" y1="1.5" x2="11.5" y2="11.5"/>
@@ -639,6 +829,33 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         <div id="lasso-box" x-show="lasso.active" x-cloak
              x-bind:style="lassoStyle()"></div>
+
+        <!-- Active pane headers (one per non-collapsed oscillator) -->
+        <template x-for="(pane, activeIdx) in oscillatorPanes.filter(p => !p.collapsed)" x-bind:key="pane.id">
+          <div class="osc-pane-header"
+               x-bind:style="`top:${activePaneTopPercent(activeIdx)}%`">
+            <span class="osc-pane-name" x-text="pane.id.toUpperCase()"></span>
+            <button class="osc-pane-btn" x-on:click="togglePaneCollapse(oscillatorPanes.find(p => p.id === pane.id))"
+                    title="Collapse">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
+                <polyline points="1,3 5,7 9,3"/>
+              </svg>
+            </button>
+          </div>
+        </template>
+
+        <!-- Collapsed pane strip — pinned to bottom, one expand-button per collapsed pane -->
+        <div class="osc-collapsed-strip" x-show="oscillatorPanes.some(p => p.collapsed)" x-cloak>
+          <template x-for="pane in oscillatorPanes.filter(p => p.collapsed)" x-bind:key="pane.id">
+            <button class="osc-collapsed-pill" x-on:click="togglePaneCollapse(pane)"
+                    x-bind:title="'Expand ' + pane.id.toUpperCase()">
+              <span x-text="pane.id.toUpperCase()"></span>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
+                <polyline points="1,7 5,3 9,7"/>
+              </svg>
+            </button>
+          </template>
+        </div>
 
         <!-- Indicator settings panel -->
         <div class="settings-panel" x-show="indicatorSettingsOpen && activeIndicatorDef()" x-cloak>
@@ -722,9 +939,9 @@ const lastCandleJson = JSON.stringify(lastCandle);
     <div class="playback-bar">
       <span class="text-[10px]" style="color:var(--muted)">MODE</span>
       <div class="seg-group">
-        <button class="seg-btn" x-on:click="setMode('off')"      x-bind:class="mode === 'off'      ? 'active' : ''">Static</button>
-        <button class="seg-btn" x-on:click="setMode('simulate')" x-bind:class="mode === 'simulate' ? 'active' : ''">Simulate</button>
-        <button class="seg-btn" x-on:click="setMode('replay')"   x-bind:class="mode === 'replay'   ? 'active' : ''">Replay</button>
+        <button class="seg-btn" x-on:click="setMode('off')"      x-bind:class="mode === 'off'      ? 'active' : ''" data-tip={t('playback.static.tip')}   data-tip-dir="up">{t('playback.static')}</button>
+        <button class="seg-btn" x-on:click="setMode('simulate')" x-bind:class="mode === 'simulate' ? 'active' : ''" data-tip={t('playback.simulate.tip')} data-tip-dir="up">{t('playback.simulate')}</button>
+        <button class="seg-btn" x-on:click="setMode('replay')"   x-bind:class="mode === 'replay'   ? 'active' : ''" data-tip={t('playback.replay.tip')}   data-tip-dir="up">{t('playback.replay')}</button>
       </div>
 
       <!-- Replay-specific controls -->
@@ -1046,6 +1263,8 @@ const lastCandleJson = JSON.stringify(lastCandle);
           this.onLassoMove = null;
           this.onLassoEnd = null;
           this._selectedDrag = false;
+          this._axisScaling = null;   // 'price' | 'time' | null
+          this._docMouseUp  = null;   // document-level mouseup for axis drag
         }
 
         // Run a WASM call behind the re-entrancy guard. Calls attempted while
@@ -1195,16 +1414,52 @@ const lastCandleJson = JSON.stringify(lastCandle);
           }
         }
 
+        // Axis zones (must match render_axes constants in wasm.rs)
+        _inPriceAxis(x) { return x >= this.canvas.clientWidth  - 64; }
+        _inTimeAxis(y)  { return y >= this.canvas.clientHeight - 20; }
+
+        _endAxisScale() {
+          if (!this._axisScaling) return;
+          if (this._axisScaling === 'price') this._wasm((c) => c.endPriceScale?.());
+          else                               this._wasm((c) => c.endTimeScale?.());
+          this._axisScaling = null;
+          if (this.canvas) this.canvas.style.cursor = 'crosshair';
+        }
+
         _bindEvents() {
           const el = this.canvas;
 
+          // Document-level mouseup so axis drag ends even when mouse leaves canvas
+          if (this._docMouseUp) document.removeEventListener("mouseup", this._docMouseUp);
+          this._docMouseUp = () => this._endAxisScale();
+          document.addEventListener("mouseup", this._docMouseUp);
+
           el.addEventListener("mousemove", (e) => {
             const {x,y} = this._coords(e);
+
+            // Axis drag in progress — route to scale method
+            if (this._axisScaling === 'price') {
+              this._wasm((c) => c.scalePriceTo?.(y));
+              return;
+            }
+            if (this._axisScaling === 'time') {
+              this._wasm((c) => c.scaleTimeTo?.(x));
+              return;
+            }
+
             if (this._selectedDrag) {
               this._wasm((c) => c.dragSelectedDrawingsTo?.(x, y));
               return;
             }
             if (this.onLassoMove?.(x, y)) return;
+
+            // Update cursor when hovering over axis zones
+            if (!this.drawingMode) {
+              if (this._inPriceAxis(x))     el.style.cursor = 'ns-resize';
+              else if (this._inTimeAxis(y)) el.style.cursor = 'ew-resize';
+              else                          el.style.cursor = 'crosshair';
+            }
+
             const info = this._wasm((c) => {
               c.onMouseMove(x, y);
               return c.getCrosshairInfo?.();
@@ -1212,11 +1467,31 @@ const lastCandleJson = JSON.stringify(lastCandle);
             if (this.onCrosshair) this.onCrosshair(info);
           });
           el.addEventListener("mouseleave", () => {
-            this._wasm((c) => c.onMouseLeave?.());
-            this.onCrosshair?.(null);
+            // Don't end axis drag on leave — document mouseup handles cleanup
+            if (!this._axisScaling) {
+              this._wasm((c) => c.onMouseLeave?.());
+              this.onCrosshair?.(null);
+            }
           });
           el.addEventListener("mousedown", (e) => {
             const {x,y} = this._coords(e);
+
+            // Axis scaling takes priority over everything except right-click
+            if (e.button === 0) {
+              if (this._inPriceAxis(x)) {
+                this._axisScaling = 'price';
+                el.style.cursor = 'ns-resize';
+                this._wasm((c) => c.startPriceScale?.(y));
+                return;
+              }
+              if (this._inTimeAxis(y)) {
+                this._axisScaling = 'time';
+                el.style.cursor = 'ew-resize';
+                this._wasm((c) => c.startTimeScale?.(x));
+                return;
+              }
+            }
+
             if (this.drawingMode) { this._handleDrawClick(x, y); return; }
             if (e.button === 0) {
               const hit = this._wasm((c) => c.selectDrawingAt?.(x, y, e.shiftKey)) ?? false;
@@ -1232,6 +1507,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this._wasm((c) => c.onMouseDown(x, y, e.button));
           });
           el.addEventListener("mouseup", (e) => {
+            if (this._axisScaling) { this._endAxisScale(); return; }
             if (this.drawingMode) return;
             const {x,y} = this._coords(e);
             if (this._selectedDrag) {
@@ -1247,8 +1523,12 @@ const lastCandleJson = JSON.stringify(lastCandle);
             const {x,y} = this._coords(e);
             this._wasm((c) => c.onMouseWheel(x, y, e.deltaY));
           }, { passive:false });
-          el.addEventListener("dblclick", () => {
-            if (!this.drawingMode) this._wasm((c) => c.fitToData?.());
+          el.addEventListener("dblclick", (e) => {
+            if (this.drawingMode) return;
+            const {x,y} = this._coords(e);
+            if (this._inPriceAxis(x))     this._wasm((c) => c.resetPriceScale?.());
+            else if (this._inTimeAxis(y)) this._wasm((c) => c.resetTimeScale?.());
+            else                          this._wasm((c) => c.fitToData?.());
           });
 
           el.addEventListener("touchstart", (e) => {
@@ -1285,6 +1565,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
 
         _startLoop() {
           const loop = () => {
+            let fatalError = false;
             if (this.chart && !this._inWasm) {
               // Resize (if queued) and render share a single guarded span so
               // the chart is never re-entered mid-borrow.
@@ -1303,9 +1584,18 @@ const lastCandleJson = JSON.stringify(lastCandle);
                 this.chart.render();
               } catch (err) {
                 console.error("[chart] render loop failed:", err);
+                // A "recursive use" error means the WASM object's borrow state
+                // is permanently corrupted — stop the loop immediately.
+                if (String(err).includes("recursive use")) {
+                  fatalError = true;
+                }
               } finally {
                 this._inWasm = false;
               }
+            }
+            if (fatalError) {
+              console.error("[chart] WASM chart object is corrupted. Reload the page to recover.");
+              return;
             }
             if (this.chart) {
               const anyOverlay = this.showVolumeProfile || this.vpMode === "vpsv"
@@ -2014,6 +2304,10 @@ const lastCandleJson = JSON.stringify(lastCandle);
           // Bar spacing (chart settings)
           barSpacing:    0,
 
+          // Indicators panel
+          indicatorQuery:  '',
+          activeOpen:      false,
+
           // Symbol search / watchlist (#31, #32)
           symbolsOpen:    false,
           symbolQuery:    "",
@@ -2021,6 +2315,7 @@ const lastCandleJson = JSON.stringify(lastCandle);
           compareOpen:    false,
           compareQuery:   "",
           compareSymbols: [],
+          studiesOpen:    false,
 
           ohlcv:         { open:null, high:null, low:null, close:null, volume:null, dir:"" },
           lastPrice:     null,
@@ -2288,6 +2583,74 @@ const lastCandleJson = JSON.stringify(lastCandle);
             else if (id === "mtf" && this.showMTF) this._applyMTF();
           },
 
+          // ── Indicator catalog (data-driven, scales to 100+) ──────
+          //
+          // Each entry: { id, name, desc, category, hasSettings }
+          // To add a new indicator: append one object here.
+          // The toggle/active logic is routed through isIndicatorActive()
+          // and toggleIndicatorById() — add a case there too.
+          //
+          _INDICATOR_CATALOG: [
+            // Overlays
+            { id: 'strategy',   name: 'Strategy',     desc: 'SMA crossover — entry/exit signals on chart',     category: 'Overlays',    hasSettings: true  },
+            { id: 'divergence', name: 'Divergence',   desc: 'RSI divergence — price vs. momentum mismatches',  category: 'Overlays',    hasSettings: true  },
+            { id: 'patterns',   name: 'Patterns',     desc: 'Double top / double bottom detection',            category: 'Overlays',    hasSettings: true  },
+            { id: 'mtf',        name: 'Multi-TF SMA', desc: 'SMA from one timeframe higher overlaid on chart', category: 'Overlays',    hasSettings: true  },
+            { id: 'news',       name: 'News Events',  desc: 'Macro events and economic releases on chart',     category: 'Overlays',    hasSettings: false },
+            // Oscillators (sub-chart panes)
+            { id: 'rsi',        name: 'RSI',          desc: 'Relative Strength Index — overbought/oversold',   category: 'Oscillators', hasSettings: false },
+            { id: 'macd',       name: 'MACD',         desc: 'Trend-following momentum indicator',              category: 'Oscillators', hasSettings: false },
+            { id: 'stochastic', name: 'Stochastic',   desc: 'Compares close to the high/low range',            category: 'Oscillators', hasSettings: false },
+            { id: 'cci',        name: 'CCI',          desc: 'Commodity Channel Index — deviation from mean',   category: 'Oscillators', hasSettings: false },
+            { id: 'williams_r', name: 'Williams %R',  desc: 'Momentum oscillator, similar to stochastic',      category: 'Oscillators', hasSettings: false },
+          ],
+
+          /** Filtered and grouped catalog for the search view. */
+          catalogIndicators() {
+            const q = (this.indicatorQuery || '').toLowerCase().trim();
+            if (!q) return this._INDICATOR_CATALOG;
+            return this._INDICATOR_CATALOG.filter(ind =>
+              ind.name.toLowerCase().includes(q) || ind.desc.toLowerCase().includes(q)
+            );
+          },
+
+          /** Distinct categories present in the current filtered catalog. */
+          catalogCategories() {
+            const seen = new Set();
+            const cats = [];
+            for (const ind of this.catalogIndicators()) {
+              if (!seen.has(ind.category)) { seen.add(ind.category); cats.push(ind.category); }
+            }
+            return cats;
+          },
+
+          isIndicatorActive(id) {
+            if (id === 'strategy')   return this.showStrategy;
+            if (id === 'divergence') return this.showDivergence;
+            if (id === 'patterns')   return this.showPatterns;
+            if (id === 'mtf')        return this.showMTF;
+            if (id === 'news')       return this.showNews;
+            return this.hasOscillatorPane(id);
+          },
+
+          toggleIndicatorById(id) {
+            if      (id === 'strategy')   this.toggleStrategy();
+            else if (id === 'divergence') this.toggleDivergence();
+            else if (id === 'patterns')   this.togglePatterns();
+            else if (id === 'mtf')        this.toggleMTF();
+            else if (id === 'news')       this.toggleNews();
+            else                          this.toggleOscillatorPane(id);
+          },
+
+          /** Active overlays/oscillators as a flat array for "On chart". */
+          activeIndicatorList() {
+            const list = [];
+            for (const ind of this._INDICATOR_CATALOG) {
+              if (this.isIndicatorActive(ind.id)) list.push(ind);
+            }
+            return list;
+          },
+
           toggleStrategy() {
             this.showStrategy = !this.showStrategy;
             this.chart?.setStrategy(this.showStrategy, this.indicatorSettings.strategy);
@@ -2333,40 +2696,110 @@ const lastCandleJson = JSON.stringify(lastCandle);
             this.chart?.setMTF(true, higherCandles, higherTf, params);
           },
 
+          // Studies button helpers
+          studiesActive() {
+            return this.showStrategy || this.showDivergence || this.showPatterns ||
+                   this.showMTF || this.showNews || this.oscillatorPanes.length > 0 ||
+                   this.compareSymbols.length > 0;
+          },
+          studiesCount() {
+            let n = 0;
+            if (this.showStrategy)   n++;
+            if (this.showDivergence) n++;
+            if (this.showPatterns)   n++;
+            if (this.showMTF)        n++;
+            if (this.showNews)       n++;
+            n += this.oscillatorPanes.length;
+            n += this.compareSymbols.length;
+            return n;
+          },
+
           hasOscillatorPane(id) {
             return this.oscillatorPanes.some((pane) => pane.id === id);
           },
 
           toggleOscillatorPane(id) {
             if (this.hasOscillatorPane(id)) {
-              this.oscillatorPanes = this.oscillatorPanes.filter((pane) => pane.id !== id);
-              this.chart?.removePane(`pane-${id}`);
+              const pane = this.oscillatorPanes.find(p => p.id === id);
+              this.oscillatorPanes = this.oscillatorPanes.filter(p => p.id !== id);
+              if (pane) this.chart?.removePane(pane.paneId);
               return;
             }
-            this.oscillatorPanes.push({ id, paneId: `pane-${id}` });
+            const h = this.indicatorPanePercent;
+            this.oscillatorPanes.push({ id, paneId: `pane-${id}`, heightPercent: h });
             const paneId = this.chart?.addIndicatorPane(id, { source: "close" }) || `pane-${id}`;
-            this.oscillatorPanes[this.oscillatorPanes.length - 1].paneId = paneId;
-            this.setIndicatorPanePercent(this.indicatorPanePercent);
+            const entry = this.oscillatorPanes[this.oscillatorPanes.length - 1];
+            entry.paneId = paneId;
+            this.chart?.setPaneHeightFraction(paneId, h / 100);
           },
 
           _syncOscillatorPanes() {
             for (const pane of this.oscillatorPanes) {
               pane.paneId = this.chart?.addIndicatorPane(pane.id, { source: "close" }) || pane.paneId;
-              this.chart?.setPaneHeightFraction(pane.paneId, this.indicatorPanePercent / 100);
+              this.chart?.setPaneHeightFraction(pane.paneId, (pane.heightPercent ?? this.indicatorPanePercent) / 100);
             }
           },
 
+          // Legacy: kept for saved layouts that don't have per-pane heights
           setIndicatorPanePercent(percent) {
             this.indicatorPanePercent = Number(percent);
-            const fraction = this.indicatorPanePercent / 100;
-            for (const pane of this.oscillatorPanes) {
-              this.chart?.setPaneHeightFraction(pane.paneId, fraction);
+          },
+
+          setPaneHeight(paneId, percent) {
+            const pane = this.oscillatorPanes.find(p => p.paneId === paneId);
+            if (pane) {
+              pane.heightPercent = Number(percent);
+              this.chart?.setPaneHeightFraction(paneId, pane.heightPercent / 100);
+            }
+          },
+
+          // Drag-to-reorder oscillator panes
+          _dragPaneIdx: null,
+          _dragOverIdx: null,
+
+          reorderPanes(fromIdx, toIdx) {
+            if (fromIdx === null || fromIdx === toIdx) return;
+            const panes = [...this.oscillatorPanes];
+            const [moved] = panes.splice(fromIdx, 1);
+            panes.splice(toIdx, 0, moved);
+            this.oscillatorPanes = panes;
+            // Rebuild pane order in WASM: remove all, re-add in new order
+            const saved = panes.map(p => ({ ...p }));
+            for (const p of saved) this.chart?.removePane(p.paneId);
+            for (const p of saved) {
+              const newId = this.chart?.addIndicatorPane(p.id, { source: "close" }) || p.paneId;
+              const entry = this.oscillatorPanes.find(e => e.id === p.id);
+              if (entry) entry.paneId = newId;
+              this.chart?.setPaneHeightFraction(newId, (p.heightPercent ?? this.indicatorPanePercent) / 100);
             }
           },
 
           paneSummary() {
-            const main = Math.max(38, Math.round(100 - this.oscillatorPanes.length * this.indicatorPanePercent));
-            return `${main}% Chart / ${this.indicatorPanePercent}% Pane`;
+            const used = this.oscillatorPanes.reduce((s, p) => s + (p.heightPercent ?? this.indicatorPanePercent), 0);
+            return `${Math.max(38, Math.round(100 - used))}% chart`;
+          },
+
+          togglePaneCollapse(pane) {
+            pane.collapsed = !pane.collapsed;
+            if (pane.collapsed) {
+              // Remove from WASM so it takes zero space
+              this.chart?.removePane(pane.paneId);
+            } else {
+              // Re-add and restore height
+              const newId = this.chart?.addIndicatorPane(pane.id, { source: 'close' }) || pane.paneId;
+              pane.paneId = newId;
+              this.chart?.setPaneHeightFraction(newId, (pane.heightPercent ?? this.indicatorPanePercent) / 100);
+            }
+          },
+
+          // Top % for the n-th ACTIVE (non-collapsed) pane header — mirrors WASM layout
+          activePaneTopPercent(activeIdx) {
+            const active = this.oscillatorPanes.filter(p => !p.collapsed);
+            const total = active.reduce((s, p) => s + (p.heightPercent ?? this.indicatorPanePercent), 0);
+            const mainPct = Math.max(38, 100 - total);
+            let top = mainPct;
+            for (let i = 0; i < activeIdx; i++) top += active[i].heightPercent ?? this.indicatorPanePercent;
+            return top;
           },
 
           toggleTheme() {

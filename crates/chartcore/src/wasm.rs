@@ -101,28 +101,7 @@ impl WasmChart {
         let candles: Vec<Candle> = serde_json::from_str(candles_json)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse candles: {}", e)))?;
 
-        web_sys::console::log_1(
-            &format!(
-                "[ChartCore] setCandles called with {} candles",
-                candles.len()
-            )
-            .into(),
-        );
-
         self.state.set_candles(candles);
-
-        web_sys::console::log_1(
-            &format!(
-                "[ChartCore] After set_candles: dirty={}, viewport: {}-{}, price: {:.2}-{:.2}",
-                self.state.is_dirty(),
-                self.state.viewport.time.start,
-                self.state.viewport.time.end,
-                self.state.viewport.price.min,
-                self.state.viewport.price.max
-            )
-            .into(),
-        );
-
         Ok(())
     }
 
@@ -576,10 +555,22 @@ impl WasmChart {
         let border = state.options.grid_color.with_alpha(0.8);
         let text = state.options.text_color.with_alpha(0.82);
 
+        // Price axis column width — oscillator content stops here, scale labels go here.
+        let price_axis_w = 64.0;
+        let content_w = width - price_axis_w;
+
         for pane in indicator_panes {
             let pane_h = (height * pane.height_fraction).max(56.0);
-            renderer.fill_rect(0.0, top, width, pane_h, bg);
+
+            // Pane background: only the content area (not the price-axis column)
+            renderer.fill_rect(0.0, top, content_w, pane_h, bg);
+            // Price-axis column background for this pane
+            renderer.fill_rect(content_w, top, price_axis_w, pane_h,
+                state.options.background_color.with_alpha(0.82));
+            // Top border across full width
             renderer.draw_line(0.0, top, width, top, border, 1.0);
+            // Separator between content and scale column
+            renderer.draw_line(content_w, top, content_w, top + pane_h, border, 1.0);
 
             let series = Self::oscillator_series(&pane.indicator_id, &state.candles);
             let visible: Vec<(i64, f64)> = series
@@ -613,10 +604,11 @@ impl WasmChart {
                     .collect();
                 renderer.draw_polyline(&points, crate::primitives::Color::rgba(88, 166, 255, 0.95), 1.6);
 
+                // Scale labels in the price-axis column (right 64px)
                 for i in 0..=2 {
                     let value = min_v + span * i as f64 / 2.0;
                     let y = value_to_y(value);
-                    renderer.draw_line(0.0, y, width, y, state.options.grid_color, 1.0);
+                    renderer.draw_line(0.0, y, content_w, y, state.options.grid_color, 1.0);
                     renderer.draw_text(
                         &format!("{:.1}", value),
                         width - 4.0,
@@ -1063,18 +1055,6 @@ impl WasmChart {
             return Ok(());
         }
 
-        web_sys::console::log_1(
-            &format!(
-                "[ChartCore] Rendering {} candles (viewport: {}-{}, price: {:.2}-{:.2})",
-                self.state.candles.len(),
-                self.state.viewport.time.start,
-                self.state.viewport.time.end,
-                self.state.viewport.price.min,
-                self.state.viewport.price.max
-            )
-            .into(),
-        );
-
         let renderer = self
             .renderer
             .as_mut()
@@ -1085,6 +1065,17 @@ impl WasmChart {
         // Clear background
         let bg_color = self.state.options.background_color;
         renderer.clear(bg_color);
+
+        // ── Compute main chart height once (shared by all rendering passes) ──
+        // main_height excludes indicator pane area at the bottom.
+        // We shrink the viewport height to main_height so that price_to_y and
+        // all grid/candle Y calculations map correctly to the main chart area.
+        let full_height = self.state.viewport.dimensions.height;
+        let main_height = Self::main_chart_height(
+            &self.indicator_panes,
+            full_height as f64,
+        );
+        self.state.viewport.dimensions.height = main_height as u32;
 
         // Draw grid
         if self.state.options.show_grid {
@@ -1136,18 +1127,6 @@ impl WasmChart {
                 optimal_candlestick_width(bar_spacing, pixel_ratio)
             };
             let (bar_width, _line_width) = symmetric_bar_width(optimal_width, pixel_ratio, false);
-
-            web_sys::console::log_1(
-                &format!(
-                    "[ChartCore] Drawing {} visible candles (spacing: {:.2}, optimal_width: {:.2}, bar_width: {:.2}, dpr: {:.2})",
-                    visible_candles.len(),
-                    bar_spacing,
-                    optimal_width,
-                    bar_width,
-                    pixel_ratio
-                )
-                .into(),
-            );
 
             let candle_style = self.state.options.candle_style;
 
@@ -1304,13 +1283,11 @@ impl WasmChart {
             }
         }
 
+        // Restore full canvas height for layout (indicator panes, axes, crosshair)
+        self.state.viewport.dimensions.height = full_height;
+
         // Draw comparison symbols as percent-performance overlays with their
         // own right-side scale.
-        let main_height = Self::main_chart_height(
-            &self.indicator_panes,
-            self.state.viewport.dimensions.height as f64,
-        );
-
         renderer.set_clip(0.0, 0.0, self.state.viewport.dimensions.width as f64, main_height);
         Self::render_compare_symbols(&self.compare_symbols, &self.state, renderer, main_height);
         renderer.clear_clip();

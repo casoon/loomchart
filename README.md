@@ -1,3 +1,26 @@
+> ## ⚠️ Archiviert (2026-09-09)
+>
+> Dieses Repository ist stillgelegt und wird nicht weiterentwickelt.
+>
+> **Nachfolger:** `casoon/kestrel-loom` (privates Repository). Dorthin ist der
+> Rendering-Kern gewandert — Viewport, Skalen, Panes, Werkzeuge und der
+> Zeichenbefehls-Strom —, ohne die eigene Indikator-Schicht: gerechnet wird jetzt in
+> [`kestrel-chartkit`](https://github.com/casoon/kestrel-chartkit).
+>
+> **Warum:** LoomChart war als eigenständige Chart-Plattform angelegt und hätte dafür
+> 77 Indikatoren, ein Elixir-Backend und einen Datenfeed parallel zu einer Werkzeug-
+> familie pflegen müssen, die dasselbe bereits tut. Als Renderer für diese Familie
+> ergibt derselbe Code Sinn; als eigenes Produkt ohne benannten Nutzer nicht.
+>
+> Beim Umzug kamen einige Dinge ans Licht, die hier nie auffielen: `ChartRenderer` war
+> toter Code (der eigentliche Renderloop steckte in `wasm.rs`), die Indikatoren rechneten
+> entgegen der Dokumentation nicht inkrementell, sondern über das volle Fenster, der
+> beworbene Chart-Typ „Heikin Ashi" existierte nicht, und `CandleGenerator` lieferte
+> Millisekunden, wo alles andere Sekunden erwartete — wodurch `zoom()` in Test- und
+> Beispielpfaden wirkungslos war. Alles im Nachfolger behoben.
+>
+> Der letzte Arbeitsstand ist eingecheckt; Code und Historie bleiben lesbar.
+
 # LoomChart
 
 > **Alpha** — actively developed, APIs and features may change without notice.

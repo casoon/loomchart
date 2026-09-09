@@ -18,7 +18,8 @@
     "@loom/shared": "workspace:*",
     "alpinejs": "^3.13.0",
     "astro": "^4.0.0",
-    "phoenix": "^1.8.3"
+    "phoenix": "^1.8.3",
+    "svelte": "^5.56.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.3.0",

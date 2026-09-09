@@ -56,6 +56,7 @@ mix test                           # run tests
 - **Indicator pipeline**: Indicators are registered in `crates/chartcore/src/indicators/registry.rs` and use incremental state — they do NOT recalculate from scratch on each tick.
 - **WASM state**: All chart state lives in `packages/wasm-core/src/state.rs` (`AppState`). JavaScript interacts exclusively through the exported WASM functions.
 - **Phoenix Channels**: The frontend subscribes to `candle:*` topics over WebSocket. The Elixir backend broadcasts new candles received from the data feed.
+- **WASM Bridge + Svelte Stores**: `apps/frontend/src/lib/wasm-bridge.ts` taps all WASM/realtime window events (`connectionStatusChanged`, `candleSnapshot`, `candleBackfill`) and writes them into Svelte `writable` stores in `apps/frontend/src/stores/chart.ts`. Alpine remains the UI layer and mutates the same stores directly for REST and test-data flows. The bridge is purely additive — Alpine keeps its event listeners; stores are populated in parallel for future Svelte component consumption. New Svelte components can read `$connectionStatus`, `$lastCandle`, etc. without any additional wiring. `OhlcvCandle` (`{ time, o, h, l, c, v }`) is the chart-internal candle type; it is distinct from `@loom/shared`'s `Candle` (wire format with `source`, `symbol`, `ts`, `is_final`).
 
 ## Important Files
 
@@ -68,6 +69,8 @@ mix test                           # run tests
 | `apps/frontend/src/wasm/trading_ui.js` | Generated WASM JS bindings (do not edit manually) |
 | `apps/frontend/src/components/IndicatorSelector.astro` | Indicator picker UI |
 | `apps/phoenix/lib/loom_web/channels/` | Phoenix WebSocket channels |
+| `apps/frontend/src/stores/chart.ts` | Svelte writable stores for WASM state (connectionStatus, lastCandle, candles, candleCount + derived) |
+| `apps/frontend/src/lib/wasm-bridge.ts` | Bridges WASM window events into the Svelte stores; exports `convertCandle` |
 
 ## Known Open TODOs
 
