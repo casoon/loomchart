@@ -2,8 +2,8 @@
 >
 > Dieses Repository ist stillgelegt und wird nicht weiterentwickelt.
 >
-> **Nachfolger:** `casoon/kestrel-loom` (privates Repository). Dorthin ist der
-> Rendering-Kern gewandert — Viewport, Skalen, Panes, Werkzeuge und der
+> **Nachfolger:** [`kestrel-loom`](https://github.com/casoon/kestrel-loom). Dorthin ist
+> der Rendering-Kern gewandert — Viewport, Skalen, Panes, Werkzeuge und der
 > Zeichenbefehls-Strom —, ohne die eigene Indikator-Schicht: gerechnet wird jetzt in
 > [`kestrel-chartkit`](https://github.com/casoon/kestrel-chartkit).
 >
